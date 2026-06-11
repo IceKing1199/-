@@ -238,6 +238,361 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
   };
 }
 
+// ── ART MODULE: vector characters & BS-style UI kit ──────────
+function mixHex(a, b, t) {
+  const c=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+  const pa=c(a), pb=c(b);
+  return `rgb(${Math.round(lerp(pa[0],pb[0],t))},${Math.round(lerp(pa[1],pb[1],t))},${Math.round(lerp(pa[2],pb[2],t))})`;
+}
+function dot(ctx, x, y, r) { ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill(); }
+function capsule(ctx, x1, y1, x2, y2, r) {
+  const a=Math.atan2(y2-y1,x2-x1);
+  ctx.beginPath();
+  ctx.arc(x1,y1,r,a+Math.PI/2,a-Math.PI/2);
+  ctx.arc(x2,y2,r,a-Math.PI/2,a+Math.PI/2);
+  ctx.closePath();
+}
+function shadowEllipse(ctx, x, y, rx, ry) {
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.22)';
+  ctx.beginPath(); ctx.ellipse(x,y,rx,ry,0,0,TAU); ctx.fill();
+  ctx.restore();
+}
+
+const BRAWLER_ART = {
+  shelly: { skin:'#ffd9b3', skinDark:'#e8b88a',
+            hair:'#9b7fd4', hairLight:'#d9c8f2',
+            top:'#34495e', accent:'#ff69b4',
+            gunMetal:'#5a6273', gunDark:'#2f3542', wood:'#8b5a2b' },
+  colt:   { skin:'#ffd9b3', skinDark:'#e8b88a', hair:'#a0522d', hairLight:'#c1703d',
+            jacket:'#d63031', shirt:'#f5f6fa',
+            gunMetal:'#aab1b8', grip:'#6d4c2f' },
+  bull:   { skin:'#d9a06b', skinDark:'#b9824f',
+            mohawk:'#1e1e24', glasses:'#14141a', glassGloss:'rgba(255,255,255,0.35)',
+            vest:'#7a1212',
+            gunMetal:'#3b3b46', wood:'#8b5a2b' },
+  nita:   { skin:'#ffcf9e', skinDark:'#e0a877', cheek:'rgba(255,110,110,0.55)',
+            hood:'#8b4513', hoodDark:'#6e3a10', earInner:'#d2691e',
+            hairFringe:'#2c1b0e', tunic:'#d35400' },
+  bear:   { fur:'#8b5a2b', furDark:'#6e4520', muzzle:'#d8a05f',
+            nose:'#2e1d10', earInner:'#c98a55' }
+};
+// Damage flash: precomputed red-tinted copies of each palette
+const FLASH_ART = {};
+function palFor(type, flash) {
+  if (!flash) return BRAWLER_ART[type];
+  if (!FLASH_ART[type]) {
+    const src=BRAWLER_ART[type], out={};
+    for (const k in src) out[k] = src[k][0]==='#' ? mixHex(src[k],'#ff4444',0.6) : src[k];
+    FLASH_ART[type]=out;
+  }
+  return FLASH_ART[type];
+}
+
+const ART_OUT='rgba(0,0,0,0.35)';
+function artLegs(ctx, R, anim, color) {
+  const sw=Math.sin(anim.walk)*R*0.18*anim.moving;
+  ctx.fillStyle=color;
+  capsule(ctx,-R*0.34,R*0.45+sw,-R*0.34,R*0.9-sw*0.4,R*0.17); ctx.fill();
+  capsule(ctx, R*0.34,R*0.45-sw, R*0.34,R*0.9+sw*0.4,R*0.17); ctx.fill();
+}
+function artEyes(ctx, R, angle, opts={}) {
+  const ex=R*(opts.eyeX||0.24), ey=-R*(opts.eyeY||0.32), er=R*(opts.eyeR||0.14);
+  const px=Math.cos(angle)*er*0.45, py=Math.sin(angle)*er*0.45;
+  ctx.fillStyle='#fff';
+  ctx.beginPath(); ctx.ellipse(-ex,ey,er,er*1.15,0,0,TAU); ctx.fill();
+  ctx.beginPath(); ctx.ellipse( ex,ey,er,er*1.15,0,0,TAU); ctx.fill();
+  ctx.fillStyle='#1d1d28';
+  dot(ctx,-ex+px,ey+py,er*0.45);
+  dot(ctx, ex+px,ey+py,er*0.45);
+  // brows
+  ctx.strokeStyle='#3a2a1a'; ctx.lineWidth=R*0.07; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(-ex-er*0.7,ey-er*1.5); ctx.lineTo(-ex+er*0.6,ey-er*1.7);
+  ctx.moveTo( ex-er*0.6,ey-er*1.7); ctx.lineTo( ex+er*0.7,ey-er*1.5);
+  ctx.stroke();
+}
+// Weapon-arm space: rotated by aim angle, flipped when facing left,
+// pulled back by recoil. fn draws along +X.
+function inGunSpace(ctx, R, angle, recoil, fn) {
+  ctx.save();
+  ctx.translate(0,R*0.12);
+  ctx.rotate(angle);
+  if (Math.cos(angle)<0) ctx.scale(1,-1);
+  ctx.translate(-recoil*R*0.28,0);
+  fn();
+  ctx.restore();
+}
+function muzzleFlash(ctx, R, len, recoil) {
+  if (recoil<=0.5) return;
+  const fl=(recoil-0.5)*2;
+  ctx.fillStyle=`rgba(255,220,80,${0.4+0.5*fl})`;
+  dot(ctx,len+R*0.18,0,R*0.22*(0.6+fl*0.7));
+  ctx.strokeStyle='rgba(255,240,150,0.9)'; ctx.lineWidth=2; ctx.lineCap='round';
+  ctx.beginPath();
+  for (let i=0;i<4;i++) {
+    const a=(i/4)*TAU+0.4;
+    ctx.moveTo(len+R*0.18+Math.cos(a)*R*0.16, Math.sin(a)*R*0.16);
+    ctx.lineTo(len+R*0.18+Math.cos(a)*R*0.42*fl, Math.sin(a)*R*0.42*fl);
+  }
+  ctx.stroke();
+}
+
+function artShelly(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,pal.skinDark);
+  // vest torso + pink stripe
+  ctx.fillStyle=pal.top;
+  ctx.beginPath(); ctx.ellipse(0,R*0.3,R*0.58,R*0.5,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle=pal.accent;
+  ctx.fillRect(-R*0.45,R*0.16,R*0.9,R*0.14);
+  // shotgun
+  inGunSpace(ctx,R,angle,anim.recoil,()=>{
+    ctx.fillStyle=pal.wood;  capsule(ctx,R*0.25,0,R*0.55,0,R*0.14); ctx.fill();
+    ctx.fillStyle=pal.gunMetal; capsule(ctx,R*0.5,0,R*1.25,0,R*0.12); ctx.fill();
+    ctx.strokeStyle=ART_OUT; ctx.lineWidth=1; ctx.stroke();
+    ctx.fillStyle=pal.wood;  capsule(ctx,R*0.82,R*0.12,R*1.02,R*0.12,R*0.09); ctx.fill();
+    ctx.fillStyle=pal.gunDark; dot(ctx,R*1.25,0,R*0.13);
+    ctx.fillStyle=pal.skin;  dot(ctx,R*0.52,R*0.08,R*0.14);
+    muzzleFlash(ctx,R,R*1.25,anim.recoil);
+  });
+  // head + hair
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.3,R*0.62);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.3,R*0.62,0,TAU); ctx.stroke();
+  ctx.fillStyle=pal.hairLight;
+  ctx.beginPath(); ctx.arc(0,-R*0.32,R*0.66,Math.PI,TAU); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=pal.hair;
+  dot(ctx,-R*0.45,-R*0.58,R*0.26);
+  dot(ctx, R*0.4,-R*0.72,R*0.22);
+  artEyes(ctx,R,angle);
+}
+
+function artColt(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,'#3b4a8c');
+  // red jacket + white shirt wedge
+  ctx.fillStyle=pal.jacket;
+  ctx.beginPath(); ctx.ellipse(0,R*0.3,R*0.56,R*0.5,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle=pal.shirt;
+  ctx.beginPath(); ctx.moveTo(-R*0.16,R*0.0); ctx.lineTo(R*0.16,R*0.0); ctx.lineTo(0,R*0.5); ctx.closePath(); ctx.fill();
+  // twin pistols, alternating recoil
+  inGunSpace(ctx,R,angle,0,()=>{
+    for (const s of [-1,1]) {
+      const rec=(s===1?anim.recoil:Math.max(0,anim.recoil-0.45)*1.8);
+      ctx.save();
+      ctx.translate(-rec*R*0.3, s*R*0.22);
+      ctx.fillStyle=pal.gunMetal; capsule(ctx,R*0.35,0,R*0.95,0,R*0.09); ctx.fill();
+      ctx.strokeStyle=ART_OUT; ctx.lineWidth=1; ctx.stroke();
+      ctx.fillStyle=pal.grip; ctx.fillRect(R*0.3,0,R*0.13,R*0.22);
+      ctx.fillStyle=pal.skin; dot(ctx,R*0.38,R*0.06,R*0.11);
+      ctx.restore();
+    }
+    muzzleFlash(ctx,R,R*0.95,anim.recoil);
+  });
+  // head + quiff
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.3,R*0.6);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.3,R*0.6,0,TAU); ctx.stroke();
+  ctx.fillStyle=pal.hair;
+  ctx.beginPath(); ctx.arc(0,-R*0.36,R*0.63,Math.PI*1.05,Math.PI*1.95); ctx.closePath(); ctx.fill();
+  dot(ctx,R*0.12,-R*0.95,R*0.3);
+  ctx.fillStyle=pal.hairLight; dot(ctx,R*0.2,-R*1.0,R*0.13);
+  artEyes(ctx,R,angle);
+}
+
+function artBull(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,'#2c2c34');
+  // hulking shoulders + vest
+  ctx.fillStyle=pal.skin;
+  ctx.beginPath(); ctx.ellipse(0,R*0.28,R*0.74,R*0.55,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  ctx.fillStyle=pal.vest;
+  ctx.beginPath(); ctx.ellipse(0,R*0.32,R*0.5,R*0.48,0,0,TAU); ctx.fill();
+  // sawed-off double barrel
+  inGunSpace(ctx,R,angle,anim.recoil,()=>{
+    ctx.fillStyle=pal.gunMetal;
+    capsule(ctx,R*0.4,-R*0.07,R*1.05,-R*0.07,R*0.09); ctx.fill();
+    capsule(ctx,R*0.4, R*0.07,R*1.05, R*0.07,R*0.09); ctx.fill();
+    ctx.strokeStyle=ART_OUT; ctx.lineWidth=1;
+    capsule(ctx,R*0.4,-R*0.07,R*1.05,-R*0.07,R*0.09); ctx.stroke();
+    ctx.fillStyle=pal.wood; capsule(ctx,R*0.22,0,R*0.45,0,R*0.13); ctx.fill();
+    ctx.fillStyle=pal.skin; dot(ctx,R*0.5,R*0.1,R*0.15);
+    muzzleFlash(ctx,R,R*1.05,anim.recoil);
+  });
+  // wide head, mohawk, shades
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.3,R*0.66);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.3,R*0.66,0,TAU); ctx.stroke();
+  ctx.fillStyle=pal.mohawk;
+  ctx.beginPath();
+  ctx.moveTo(-R*0.45,-R*0.72);
+  ctx.lineTo(-R*0.28,-R*1.18); ctx.lineTo(-R*0.12,-R*0.82);
+  ctx.lineTo( R*0.04,-R*1.24); ctx.lineTo( R*0.2,-R*0.84);
+  ctx.lineTo( R*0.36,-R*1.1);  ctx.lineTo( R*0.48,-R*0.7);
+  ctx.closePath(); ctx.fill();
+  // glasses band + gloss
+  ctx.fillStyle=pal.glasses;
+  ctx.beginPath(); ctx.roundRect(-R*0.52,-R*0.48,R*1.04,R*0.3,R*0.12); ctx.fill();
+  ctx.strokeStyle=pal.glassGloss; ctx.lineWidth=R*0.06; ctx.lineCap='round';
+  ctx.beginPath();
+  ctx.moveTo(-R*0.38,-R*0.4); ctx.lineTo(-R*0.18,-R*0.4);
+  ctx.moveTo( R*0.12,-R*0.4); ctx.lineTo( R*0.32,-R*0.4);
+  ctx.stroke();
+  // angry brows above shades
+  ctx.strokeStyle='#1a1a20'; ctx.lineWidth=R*0.09;
+  ctx.beginPath();
+  ctx.moveTo(-R*0.42,-R*0.6); ctx.lineTo(-R*0.1,-R*0.52);
+  ctx.moveTo( R*0.1,-R*0.52); ctx.lineTo( R*0.42,-R*0.6);
+  ctx.stroke();
+}
+
+function artNita(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,pal.skinDark);
+  // tunic
+  ctx.fillStyle=pal.tunic;
+  ctx.beginPath(); ctx.ellipse(0,R*0.32,R*0.56,R*0.48,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  // paw swipe (lunges FORWARD on attack)
+  inGunSpace(ctx,R,angle,-anim.recoil*1.5,()=>{
+    ctx.fillStyle=pal.hood; dot(ctx,R*0.62,R*0.05,R*0.2);
+    ctx.fillStyle=pal.skin; dot(ctx,R*0.74,R*0.02,R*0.13);
+  });
+  // bear-eared hood ring around face
+  ctx.fillStyle=pal.hood; dot(ctx,0,-R*0.3,R*0.7);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.3,R*0.7,0,TAU); ctx.stroke();
+  ctx.fillStyle=pal.hoodDark; dot(ctx,-R*0.46,-R*0.82,R*0.24); dot(ctx,R*0.46,-R*0.82,R*0.24);
+  ctx.fillStyle=pal.earInner; dot(ctx,-R*0.46,-R*0.82,R*0.12); dot(ctx,R*0.46,-R*0.82,R*0.12);
+  // face + fringe + cheeks
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.28,R*0.5);
+  ctx.fillStyle=pal.hairFringe;
+  ctx.beginPath(); ctx.arc(0,-R*0.34,R*0.5,Math.PI*1.1,Math.PI*1.9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle=pal.cheek; dot(ctx,-R*0.3,-R*0.14,R*0.1); dot(ctx,R*0.3,-R*0.14,R*0.1);
+  artEyes(ctx,R,angle,{eyeR:0.16,eyeY:0.28});
+}
+
+const ART_FNS = { shelly:artShelly, colt:artColt, bull:artBull, nita:artNita };
+
+// anim = { t, walk, moving (0..1), recoil (0..1), spawn (1→0), flash (bool) }
+function drawBrawlerArt(ctx, type, x, y, scale, angle, anim) {
+  const R=BRAWLER_CONFIGS[type].radius;
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.scale(scale,scale);
+  if (anim.spawn>0) {
+    const s=1+0.45*Math.sin(anim.spawn*Math.PI);
+    ctx.scale(s,s);
+  }
+  shadowEllipse(ctx,0,R*0.95,R*0.9,R*0.32);
+  const bob=Math.sin(anim.walk)*1.6*anim.moving + Math.sin(anim.t*0.05)*0.6*(1-anim.moving);
+  ctx.translate(0,-bob);
+  ART_FNS[type](ctx,R,angle,anim,palFor(type,anim.flash));
+  ctx.restore();
+}
+
+// Top-down bear for Nita's super
+function drawBearArt(ctx, x, y, scale, angle, anim) {
+  const pal=palFor('bear',anim.flash);
+  const R=BRAWLER_CONFIGS.nita.bearRadius;
+  ctx.save();
+  ctx.translate(x,y); ctx.scale(scale,scale);
+  shadowEllipse(ctx,0,R*0.35,R*1.05,R*0.6);
+  ctx.rotate(angle);
+  const step=Math.sin(anim.walk)*3;
+  ctx.fillStyle=pal.furDark;
+  dot(ctx, R*0.45+step,-R*0.6,R*0.26);
+  dot(ctx, R*0.45-step, R*0.6,R*0.26);
+  dot(ctx,-R*0.5-step,-R*0.6,R*0.26);
+  dot(ctx,-R*0.5+step, R*0.6,R*0.26);
+  ctx.fillStyle=pal.fur;
+  ctx.beginPath(); ctx.ellipse(-R*0.1,0,R*0.95,R*0.72,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=2; ctx.stroke();
+  ctx.fillStyle=pal.fur; dot(ctx,R*0.72,0,R*0.52);
+  ctx.strokeStyle=ART_OUT;
+  ctx.beginPath(); ctx.arc(R*0.72,0,R*0.52,0,TAU); ctx.stroke();
+  ctx.fillStyle=pal.furDark; dot(ctx,R*0.52,-R*0.44,R*0.2); dot(ctx,R*0.52,R*0.44,R*0.2);
+  ctx.fillStyle=pal.earInner; dot(ctx,R*0.52,-R*0.44,R*0.1); dot(ctx,R*0.52,R*0.44,R*0.1);
+  ctx.fillStyle=pal.muzzle;
+  ctx.beginPath(); ctx.ellipse(R*1.02,0,R*0.28,R*0.2,0,0,TAU); ctx.fill();
+  ctx.fillStyle=pal.nose; dot(ctx,R*1.16,0,R*0.09);
+  ctx.fillStyle='#1d1d28'; dot(ctx,R*0.82,-R*0.18,R*0.07); dot(ctx,R*0.82,R*0.18,R*0.07);
+  ctx.restore();
+}
+
+// ── BS-STYLE UI KIT ──────────────────────────────────────────
+function drawBSBackground(ctx, w, h, t) {
+  ctx.fillStyle='#2a8fdd'; ctx.fillRect(0,0,w,h);
+  ctx.save();
+  ctx.translate(w/2,h/2); ctx.rotate(-0.45);
+  ctx.fillStyle='rgba(255,255,255,0.07)';
+  const drift=(t*0.4)%140;
+  for (let x=-840+drift; x<840; x+=140) ctx.fillRect(x,-700,70,1400);
+  ctx.restore();
+  ctx.fillStyle='#1d6fb8'; ctx.fillRect(0,h-70,w,70);
+}
+function drawCartoonTitle(ctx, text, x, y, size, t) {
+  ctx.save();
+  ctx.translate(x,y);
+  ctx.rotate(-0.04);
+  ctx.transform(1,0,-0.08,1,0,0);
+  const p=1+0.015*Math.sin(t*0.05);
+  ctx.scale(p,p);
+  ctx.font=`bold ${size}px Arial`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  ctx.strokeStyle='#16315e'; ctx.lineWidth=size*0.26;
+  ctx.strokeText(text,0,0);
+  const g=ctx.createLinearGradient(0,-size*0.5,0,size*0.5);
+  g.addColorStop(0,'#ffffff'); g.addColorStop(0.55,'#fff3b0'); g.addColorStop(1,'#ffd34d');
+  ctx.fillStyle=g;
+  ctx.fillText(text,0,0);
+  ctx.strokeStyle='rgba(122,74,0,0.55)'; ctx.lineWidth=Math.max(1.5,size*0.04);
+  ctx.strokeText(text,0,0);
+  ctx.restore();
+}
+// Chunky 3D yellow button. Bobbing is visual only — the returned
+// rect (used for hit-testing) never moves.
+function drawJuicyButton(ctx, rect, label, t) {
+  const {x,y,w,h}=rect;
+  const bevel=Math.max(6,h*0.12);
+  const bob=Math.sin(t*0.06)*2;
+  ctx.save();
+  ctx.translate(0,bob);
+  ctx.fillStyle='#c98700';
+  ctx.beginPath(); ctx.roundRect(x,y+bevel,w,h,14); ctx.fill();
+  const g=ctx.createLinearGradient(0,y,0,y+h);
+  g.addColorStop(0,'#ffd83d'); g.addColorStop(1,'#ffb300');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,14); ctx.fill();
+  ctx.strokeStyle='#5a3a00'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.roundRect(x,y,w,h+bevel,14); ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,0.38)';
+  ctx.beginPath(); ctx.roundRect(x+8,y+5,w-16,h*0.3,8); ctx.fill();
+  ctx.font=`bold ${Math.floor(h*0.42)}px Arial`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  ctx.strokeStyle='#5a3a00'; ctx.lineWidth=5;
+  ctx.strokeText(label,x+w/2,y+h/2+1);
+  ctx.fillStyle='#fff';
+  ctx.fillText(label,x+w/2,y+h/2+1);
+  ctx.restore();
+  return rect;
+}
+function drawStatBar(ctx, x, y, w, label, ratio, color) {
+  ratio=Math.max(0.06,Math.min(ratio,1));
+  ctx.save();
+  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='bold 9px Arial';
+  ctx.textAlign='left'; ctx.textBaseline='middle';
+  ctx.fillText(label,x,y+4);
+  const bx=x+34, bw=w-34, bh=8;
+  ctx.fillStyle='rgba(0,0,0,0.45)';
+  ctx.beginPath(); ctx.roundRect(bx,y,bw,bh,4); ctx.fill();
+  ctx.fillStyle=color;
+  ctx.beginPath(); ctx.roundRect(bx,y,bw*ratio,bh,4); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.35)';
+  ctx.beginPath(); ctx.roundRect(bx+1,y+1,Math.max(bw*ratio-2,2),2.5,2); ctx.fill();
+  ctx.restore();
+}
+
 // ── BULLET ───────────────────────────────────────────────────
 class Bullet {
   constructor(x, y, angle, config, ownerId, opts={}) {
@@ -314,6 +669,7 @@ class Bear {
     this.attackCooldown=0; this.flashTimer=0;
     this.aggroRange=400;
     this.stuckTimer=0; this.sideSign=1;
+    this.angle=0; this.walkPhase=0;
   }
   update(brawlers) {
     if (!this.active) return;
@@ -338,6 +694,7 @@ class Bear {
     if (!goal) return;
     let angle=Math.atan2(goal.y-this.y, goal.x-this.x);
     if (this.stuckTimer>0) { this.stuckTimer--; angle+=this.sideSign*Math.PI/2; }
+    this.angle=angle;
     const nx=this.x+Math.cos(angle)*this.speed;
     const ny=this.y+Math.sin(angle)*this.speed;
     let moved=false;
@@ -345,6 +702,7 @@ class Bear {
         && nx>this.radius && nx<ARENA_WIDTH-this.radius)  { this.x=nx; moved=true; }
     if (!tileMap.circleHitsSolid(this.x,ny,this.radius,tileMap.isSolidForMove)
         && ny>this.radius && ny<ARENA_HEIGHT-this.radius) { this.y=ny; moved=true; }
+    if (moved) this.walkPhase+=this.speed*0.2;
     if (!moved && this.stuckTimer<=0) { this.stuckTimer=30; this.sideSign*=-1; }
     if (nearest && nd < this.radius+nearest.radius+10 && this.attackCooldown<=0) {
       const died=nearest.takeDamage(this.damage, this.ownerId);
@@ -360,12 +718,9 @@ class Bear {
     if (!this.active) return;
     const sx=this.x-cx, sy=this.y-cy;
     ctx.save();
-    ctx.fillStyle=this.flashTimer>0?'#ff4444':this.color;
-    ctx.beginPath(); ctx.arc(sx,sy,this.radius,0,TAU); ctx.fill();
-    ctx.strokeStyle='#8b4513'; ctx.lineWidth=2; ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.font='bold 13px Arial';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('🐻',sx,sy);
+    drawBearArt(ctx, sx, sy, 1, this.angle, {
+      walk: this.walkPhase, flash: this.flashTimer>0
+    });
     // HP bar
     const bw=32, bh=4, bx=sx-bw/2, by=sy-this.radius-10;
     const r=Math.max(0,this.hp/this.maxHp);
@@ -403,6 +758,9 @@ class Brawler {
     this.dashHitIds=null;
     this.burst=null;          // Colt burst fire: {left, angle, timer, isSuper, damage, range}
     this.pendingBullets=[];   // drained by Game each frame
+    // animation state
+    this.walkPhase=0; this.movingAmp=0; this.spawnTimer=24;
+    this.prevX=x; this.prevY=y;
   }
   get damageMult() { return 1 + 0.1*this.cubes; }
   update() {
@@ -411,6 +769,7 @@ class Brawler {
     if (this.shootFlash>0)    this.shootFlash--;
     if (this.flashTimer>0)    this.flashTimer--;
     if (this.revealTimer>0)   this.revealTimer--;
+    if (this.spawnTimer>0)    this.spawnTimer--;
     this.framesSinceDamage++;
     if (this.ammo<this.maxAmmo) {
       this.reloadTimer--;
@@ -428,8 +787,14 @@ class Brawler {
       if (this.burst && this.burst.left<=0) this.burst=null;
     }
     this.inBush=tileMap.inBush(this.x,this.y);
-    if (this.isDashing) { this.updateDash(); return; }
-    this.updateMovement();
+    if (this.isDashing) this.updateDash();
+    else this.updateMovement();
+    // Walk animation driven by distance actually travelled — keeps
+    // step rate honest across speeds and during Bull's dash.
+    const moved=dist(this.prevX,this.prevY,this.x,this.y);
+    this.walkPhase+=moved*0.22;
+    this.movingAmp=lerp(this.movingAmp, moved>0.3?1:0, 0.18);
+    this.prevX=this.x; this.prevY=this.y;
   }
   fireBurstBullet() {
     const b=this.burst;
@@ -562,22 +927,14 @@ class Brawler {
     ctx.beginPath(); ctx.moveTo(sx,sy);
     ctx.lineTo(sx+Math.cos(this.angle)*this.config.range, sy+Math.sin(this.angle)*this.config.range);
     ctx.stroke(); ctx.restore();
-    // Body
-    ctx.save();
-    ctx.fillStyle=this.flashTimer>0?'#ff3333':this.color;
-    if (this.shootFlash>0) { ctx.shadowColor='#fff'; ctx.shadowBlur=15; }
-    ctx.beginPath(); ctx.arc(sx,sy,this.radius,0,TAU); ctx.fill();
-    ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=2; ctx.stroke();
-    // Direction dot
-    ctx.fillStyle='rgba(255,255,255,0.6)';
-    ctx.beginPath();
-    ctx.arc(sx+Math.cos(this.angle)*this.radius*0.6, sy+Math.sin(this.angle)*this.radius*0.6, 4, 0, TAU);
-    ctx.fill();
-    // Symbol
-    ctx.fillStyle='#fff'; ctx.font=`bold ${this.radius}px Arial`;
-    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.shadowBlur=0;
-    ctx.fillText(this.config.symbol, sx, sy+1);
-    ctx.restore();
+    // Body (vector art; muzzle flash replaces the old shootFlash glow)
+    drawBrawlerArt(ctx, this.type, sx, sy, 1, this.angle, {
+      t: game?game.frameCount:0,
+      walk: this.walkPhase, moving: this.movingAmp,
+      recoil: this.shootFlash/4,
+      spawn: this.spawnTimer/24,
+      flash: this.flashTimer>0
+    });
     // HP bar
     this.renderHpBar(ctx, sx, sy);
     // Super ready ring
@@ -1483,109 +1840,110 @@ class Game {
   }
 
   renderMenu(ctx,w,h) {
-    // BG gradient
-    const g=ctx.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,'#0d0d2b'); g.addColorStop(1,'#1a1a3e');
-    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
-
-    // Stars
-    ctx.fillStyle='rgba(255,255,255,0.3)';
-    for(let i=0;i<60;i++) {
-      const sx2=(i*137.508)%w, sy2=(i*97.3)%h;
-      ctx.beginPath(); ctx.arc(sx2,sy2,1,0,TAU); ctx.fill();
-    }
-
-    // Title
-    ctx.save();
-    ctx.fillStyle='#ffdd00'; ctx.font='bold 46px Arial';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.shadowColor='#ff8800'; ctx.shadowBlur=20;
-    ctx.fillText('⭐ BRAWL ARENA ⭐',w/2,30);
-    ctx.shadowBlur=0; ctx.restore();
+    drawBSBackground(ctx,w,h,this.frameCount);
 
     if (this.menuState==='main') {
-      ctx.fillStyle='#aaaacc'; ctx.font='18px Arial';
-      ctx.textAlign='center'; ctx.textBaseline='top';
-      ctx.fillText('Выбери бравлера и вступай в битву!', w/2, 100);
+      drawCartoonTitle(ctx,'BRAWL ARENA',w/2,90,58,this.frameCount);
 
-      const bx=w/2-110, by=h/2-35, bw=220, bh=70;
-      const bg=ctx.createLinearGradient(bx,by,bx,by+bh);
-      bg.addColorStop(0,'#00ee55'); bg.addColorStop(1,'#009933');
-      ctx.fillStyle=bg;
-      ctx.strokeStyle='#00ff66'; ctx.lineWidth=3;
-      ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,12); ctx.fill(); ctx.stroke();
-      ctx.fillStyle='#fff'; ctx.font='bold 28px Arial';
+      // Subtitle plate
+      ctx.fillStyle='rgba(0,30,70,0.5)';
+      ctx.beginPath(); ctx.roundRect(w/2-190,150,380,32,16); ctx.fill();
+      ctx.fillStyle='#cfe6ff'; ctx.font='16px Arial';
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.shadowColor='rgba(0,0,0,0.5)'; ctx.shadowBlur=4;
-      ctx.fillText('▶ ИГРАТЬ',w/2,h/2);
-      ctx.shadowBlur=0;
-      ctx.fillStyle='#666688'; ctx.font='12px Arial';
+      ctx.fillText('Выбери бравлера и вступай в битву!',w/2,166);
+
+      this.startBtnRect=drawJuicyButton(ctx,{x:w/2-130,y:h/2-30,w:260,h:78},'ИГРАТЬ',this.frameCount);
+
+      // Brawler parade strolling along the bottom
+      const keys=['shelly','colt','bull','nita'];
+      keys.forEach((key,i)=>{
+        const px=w/2+(i-1.5)*120;
+        const wob=Math.sin(this.frameCount*0.02+i*1.7)*0.25;
+        drawBrawlerArt(ctx,key,px,h-105,1.6,-0.3+wob,{
+          t:this.frameCount+i*37, walk:this.frameCount*0.12+i*2,
+          moving:0.5, recoil:0, spawn:0, flash:false
+        });
+      });
+
+      ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font='12px Arial';
+      ctx.textAlign='center'; ctx.textBaseline='top';
       const hint=IS_TOUCH
         ? 'Левый джойстик = движение  |  Правый = прицел и стрельба  |  Жёлтый = супер'
         : 'WASD = движение  |  Мышь = прицел и стрельба  |  Пробел = супер';
-      ctx.fillText(hint,w/2,h-50);
-      this.startBtnRect={x:bx,y:by,w:bw,h:bh};
+      ctx.fillText(hint,w/2,h-40);
 
     } else if (this.menuState==='select') {
-      ctx.fillStyle='#ffdd00'; ctx.font='bold 24px Arial';
-      ctx.textAlign='center'; ctx.textBaseline='top';
-      ctx.fillText('ВЫБЕРИ БРАВЛЕРА',w/2,88);
+      drawCartoonTitle(ctx,'ВЫБЕРИ БРАВЛЕРА',w/2,68,34,this.frameCount);
 
-      const cw=155, ch=210;
+      const cw=170, ch=330;
       const keys=['shelly','colt','bull','nita'];
-      const startX=w/2-(4*cw+3*12)/2;
-      const cy2=h/2-ch/2;
+      const startX=w/2-(4*cw+3*14)/2;
+      const cy2=130;
       this.brawlerCardRects=[];
+      const superLabels={shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь'};
 
       for(let i=0;i<keys.length;i++) {
         const key=keys[i], cfg=BRAWLER_CONFIGS[key];
-        const cx2=startX+i*(cw+12);
+        const cx2=startX+i*(cw+14);
         const hov=this.hoverBrawler===key;
+        const yOff=hov?-6:0; // visual lift only; hit rect stays put
 
-        // Card
         ctx.save();
-        if (hov) { ctx.shadowColor=cfg.color; ctx.shadowBlur=15; }
-        ctx.fillStyle=hov?'#2a2a55':'#1e1e44';
-        ctx.strokeStyle=hov?cfg.color:'#444466'; ctx.lineWidth=hov?3:2;
-        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,10); ctx.fill(); ctx.stroke();
+        ctx.translate(0,yOff);
+
+        // Card body: brawler-coloured gradient
+        const cg=ctx.createLinearGradient(0,cy2,0,cy2+ch);
+        cg.addColorStop(0,cfg.color); cg.addColorStop(1,darken(cfg.color,0.42));
+        ctx.fillStyle=cg;
+        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=3; ctx.stroke();
+        // Diagonal sheen
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.clip();
+        ctx.fillStyle='rgba(255,255,255,0.08)';
+        ctx.beginPath();
+        ctx.moveTo(cx2+cw*0.45,cy2); ctx.lineTo(cx2+cw*0.8,cy2);
+        ctx.lineTo(cx2+cw*0.35,cy2+ch); ctx.lineTo(cx2,cy2+ch);
+        ctx.closePath(); ctx.fill();
         ctx.restore();
 
-        // Avatar circle
-        const g2=ctx.createRadialGradient(cx2+cw/2,cy2+52,0,cx2+cw/2,cy2+52,32);
-        g2.addColorStop(0, cfg.color); g2.addColorStop(1, darken(cfg.color,0.6));
-        ctx.fillStyle=g2;
-        ctx.beginPath(); ctx.arc(cx2+cw/2,cy2+52,30,0,TAU); ctx.fill();
-        ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=2; ctx.stroke();
-        ctx.fillStyle='#fff'; ctx.font='bold 22px Arial';
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(cfg.symbol,cx2+cw/2,cy2+52);
+        if (hov) {
+          ctx.save();
+          ctx.strokeStyle='#ffdd00'; ctx.lineWidth=4;
+          ctx.shadowColor='#ffdd00'; ctx.shadowBlur=18;
+          ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.stroke();
+          ctx.restore();
+        }
 
-        // Name
-        ctx.fillStyle='#fff'; ctx.font='bold 15px Arial';
-        ctx.fillText(cfg.name,cx2+cw/2,cy2+100);
-
-        // Stats
-        ctx.fillStyle='#9999bb'; ctx.font='11px Arial'; ctx.textAlign='left';
-        const stats=[
-          ['❤️ HP',  cfg.hp],
-          ['💥 Урон', cfg.damage],
-          ['📏 Даль', cfg.range],
-          ['💨 Скор', cfg.speed],
-        ];
-        stats.forEach((s,j)=>{
-          ctx.fillStyle='#7777aa';
-          ctx.fillText(s[0],cx2+12,cy2+122+j*16);
-          ctx.fillStyle='#eeeeff'; ctx.textAlign='right';
-          ctx.fillText(s[1],cx2+cw-10,cy2+122+j*16);
-          ctx.textAlign='left';
+        // Podium glow + live portrait
+        ctx.fillStyle='rgba(255,255,255,0.12)';
+        ctx.beginPath(); ctx.ellipse(cx2+cw/2,cy2+128,cw*0.34,20,0,0,TAU); ctx.fill();
+        drawBrawlerArt(ctx,key,cx2+cw/2,cy2+95,2.4,-0.45,{
+          t:this.frameCount+i*53, walk:0, moving:0, recoil:0, spawn:0, flash:false
         });
 
-        // Super label
-        const superLabels={shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь'};
-        ctx.fillStyle='#ffdd00'; ctx.font='10px Arial';
-        ctx.textAlign='center';
-        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-12);
+        // Name plate
+        ctx.fillStyle='rgba(20,25,50,0.85)';
+        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+170,cw-20,28,8); ctx.fill();
+        ctx.font='bold 17px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.lineJoin='round'; ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=3;
+        ctx.strokeText(cfg.name,cx2+cw/2,cy2+184);
+        ctx.fillStyle='#fff';
+        ctx.fillText(cfg.name,cx2+cw/2,cy2+184);
 
+        // Stat bars
+        drawStatBar(ctx,cx2+14,cy2+214,cw-28,'HP',  cfg.hp/5000,'#4cd137');
+        drawStatBar(ctx,cx2+14,cy2+238,cw-28,'УРОН',cfg.damage*cfg.bulletCount/1600,'#e84118');
+        drawStatBar(ctx,cx2+14,cy2+262,cw-28,'СКОР',(cfg.speed-2.4)/0.8,'#00a8ff');
+
+        // Super label
+        ctx.fillStyle='rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+ch-40,cw-20,26,8); ctx.fill();
+        ctx.fillStyle='#ffdd00'; ctx.font='bold 11px Arial';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-27);
+
+        ctx.restore();
         this.brawlerCardRects.push({x:cx2,y:cy2,w:cw,h:ch,key});
       }
     }
@@ -2008,32 +2366,51 @@ class Game {
   }
 
   renderGameOver(ctx,w,h) {
-    ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle='rgba(10,20,45,0.82)'; ctx.fillRect(0,0,w,h);
     const place=this.player?this.player.placement:null;
     const won=place===1;
-    ctx.fillStyle=won?'#ffdd00':'#ff8866';
-    ctx.font='bold 40px Arial';
-    ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.shadowColor=won?'#ff8800':'#aa2200'; ctx.shadowBlur=20;
-    ctx.fillText(won?'🏆 ПОБЕДА!':`ВЫ ВЫБЫЛИ — ${place} МЕСТО`,w/2,h/2-200);
-    ctx.shadowBlur=0;
+
+    // Panel
+    const px=140, py=112, pw=520, ph=380;
+    ctx.fillStyle='#22335c';
+    ctx.beginPath(); ctx.roundRect(px,py,pw,ph,16); ctx.fill();
+    ctx.strokeStyle='#101a33'; ctx.lineWidth=4; ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.roundRect(px+6,py+6,pw-12,26,10); ctx.fill();
+
+    // Ribbon banner with side tails
+    const rw=380, rh=54, rx=w/2-rw/2, ry=py-26;
+    ctx.fillStyle=won?'#b8860b':'#3d4757';
+    ctx.beginPath();
+    ctx.moveTo(rx-28,ry+8); ctx.lineTo(rx+10,ry+rh/2); ctx.lineTo(rx-28,ry+rh-4); ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(rx+rw+28,ry+8); ctx.lineTo(rx+rw-10,ry+rh/2); ctx.lineTo(rx+rw+28,ry+rh-4); ctx.closePath(); ctx.fill();
+    const rg=ctx.createLinearGradient(0,ry,0,ry+rh);
+    if (won) { rg.addColorStop(0,'#ffd83d'); rg.addColorStop(1,'#ffaa00'); }
+    else     { rg.addColorStop(0,'#7f8fa6'); rg.addColorStop(1,'#57606f'); }
+    ctx.fillStyle=rg;
+    ctx.beginPath(); ctx.roundRect(rx,ry,rw,rh,10); ctx.fill();
+    ctx.strokeStyle=won?'#7a4a00':'#2f3640'; ctx.lineWidth=3; ctx.stroke();
+    drawCartoonTitle(ctx, won?'ПОБЕДА!':`${place} МЕСТО`, w/2, ry+rh/2, 30, this.frameCount);
+
+    // Placement table
     const sorted=[...this.brawlers].sort((a,b)=>(a.placement||99)-(b.placement||99));
     sorted.forEach((b,i)=>{
-      const ry=h/2-138+i*26;
-      const medal=['🥇','🥈','🥉'][i]||`${b.placement}.`;
-      ctx.fillStyle=b.isPlayer?'#00ffff':(['#ffd700','#c0c0c0','#cd7f32'][i]||'#aaa');
-      ctx.font='bold 15px Arial'; ctx.textAlign='center';
-      ctx.fillText(`${medal} ${b.config.name}${b.isPlayer?' (ВЫ)':''} — 🧊${b.cubes}  ☠${b.kills}`,w/2,ry);
+      const ry2=py+62+i*28;
+      if (b.isPlayer) {
+        ctx.fillStyle='rgba(0,255,255,0.12)';
+        ctx.beginPath(); ctx.roundRect(px+24,ry2-13,pw-48,26,8); ctx.fill();
+      }
+      const medal=['🥇','🥈','🥉'][i]||` ${b.placement}.`;
+      ctx.font='bold 15px Arial'; ctx.textBaseline='middle';
+      ctx.fillStyle=b.isPlayer?'#00ffff':(['#ffd700','#c0c0c0','#cd7f32'][i]||'#aab');
+      ctx.textAlign='left';
+      ctx.fillText(`${medal} ${b.config.name}${b.isPlayer?' (ВЫ)':''}`,px+36,ry2);
+      ctx.textAlign='right';
+      ctx.fillText(`🧊${b.cubes}   ☠${b.kills}`,px+pw-36,ry2);
     });
-    const bx=w/2-95, by=h/2+95, bw=190, bh=50;
-    const bg=ctx.createLinearGradient(bx,by,bx,by+bh);
-    bg.addColorStop(0,'#00ee55'); bg.addColorStop(1,'#009933');
-    ctx.fillStyle=bg; ctx.strokeStyle='#00ff66'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.roundRect(bx,by,bw,bh,10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='#fff'; ctx.font='bold 20px Arial';
-    ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('🔄 ИГРАТЬ СНОВА',w/2,by+bh/2);
-    this.playAgainBtn={x:bx,y:by,w:bw,h:bh};
+
+    this.playAgainBtn=drawJuicyButton(ctx,{x:w/2-120,y:py+ph-70,w:240,h:52},'ИГРАТЬ СНОВА',this.frameCount);
   }
 
   handleMenuClick() {
