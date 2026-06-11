@@ -41,19 +41,29 @@
 <canvas id="gameCanvas"></canvas>
 <script>
 // ============================================================
-// BRAWL STARS CLONE — Fixed & Enhanced Edition
-// Fixes: bot shooting logic, Bull wall collision on dash,
-//        Nita bear balance, object pool cleanup
-// New:   Brawl Stars-style mobile controls — twin virtual
-//        joysticks (move / aim+shoot) + dedicated super stick
+// BRAWL STARS CLONE — Showdown Edition
+// Tile-based map (walls / boxes / bushes / water), bush stealth,
+// HP regen, power cubes, shrinking poison cloud, destructible
+// walls, Web Audio sound, smarter bots, reworked brawlers.
+// Mobile: twin virtual joysticks + dedicated super stick.
 // ============================================================
 
-const ARENA_WIDTH  = 2400;
-const ARENA_HEIGHT = 1800;
+const TILE      = 80;
+const MAP_COLS  = 30;
+const MAP_ROWS  = 23;
+const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
+const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1840
 const CANVAS_WIDTH  = 800;
 const CANVAS_HEIGHT = 600;
-const MATCH_DURATION = 120;
+const MATCH_DURATION = 180;             // fail-safe; matches end by elimination
+const TOTAL_PLAYERS = 8;                // 1 player + 7 bots
 const TAU = Math.PI * 2;
+
+// Tile types
+const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5;
+const BOX_HP = 2400, CRATE_HP = 3600;
+
+let game = null; // global singleton, set on load
 
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
@@ -62,45 +72,126 @@ const GameState = { MENU: 'menu', PLAYING: 'playing', GAME_OVER: 'gameOver' };
 // ── BRAWLER CONFIGS ──────────────────────────────────────────
 const BRAWLER_CONFIGS = {
   shelly: {
-    name: 'Shelly', hp: 3600, speed: 2.8, damage: 400, range: 220,
-    reload: 35, bulletSpeed: 7, bulletCount: 5, spread: 0.45,
+    name: 'Shelly', hp: 3600, speed: 2.8, damage: 320, range: 240,
+    reload: 90, attackCooldown: 25, bulletSpeed: 7, bulletCount: 5, spread: 0.45,
+    falloff: true,
     radius: 18, color: '#ff69b4', symbol: 'S',
-    superDamage: 600, superSpread: 0.7, superBullets: 9, superChargeRate: 0.15
+    superDamage: 400, superSpread: 0.7, superBullets: 9, superChargeRate: 0.15
   },
   colt: {
-    name: 'Colt', hp: 3200, speed: 3.0, damage: 480, range: 300,
-    reload: 18, bulletSpeed: 10, bulletCount: 1, spread: 0,
+    name: 'Colt', hp: 2800, speed: 3.1, damage: 280, range: 320,
+    reload: 85, attackCooldown: 30, bulletSpeed: 10, bulletCount: 4, spread: 0,
     radius: 16, color: '#4169e1', symbol: 'C',
-    superDamage: 400, superBurstCount: 12, superChargeRate: 0.12
+    superDamage: 320, superBurstCount: 12, superChargeRate: 0.12
   },
   bull: {
-    name: 'Bull', hp: 5200, speed: 2.5, damage: 550, range: 160,
-    reload: 40, bulletSpeed: 6, bulletCount: 3, spread: 0.35,
+    name: 'Bull', hp: 5000, speed: 2.7, damage: 450, range: 170,
+    reload: 100, attackCooldown: 30, bulletSpeed: 6, bulletCount: 3, spread: 0.35,
+    falloff: true,
     radius: 22, color: '#8b0000', symbol: 'B',
-    superDamage: 800, superChargeRate: 0.18,
-    chargeSpeed: 12, chargeDuration: 25
+    superDamage: 900, superChargeRate: 0.18,
+    chargeSpeed: 12, chargeDuration: 30
   },
   nita: {
-    name: 'Nita', hp: 4000, speed: 2.9, damage: 850, range: 240,
-    reload: 28, bulletSpeed: 7, bulletCount: 1, spread: 0,
+    name: 'Nita', hp: 3800, speed: 2.9, damage: 660, range: 260,
+    reload: 80, attackCooldown: 25, bulletSpeed: 7, bulletCount: 1, spread: 0,
     radius: 17, color: '#8b4513', symbol: 'N',
     superDamage: 0, superChargeRate: 0.16,
-    bearHp: 5000, bearDamage: 500, bearSpeed: 2.4,
-    bearRadius: 20, bearDuration: 480
+    bearHp: 4200, bearDamage: 480, bearSpeed: 2.4,
+    bearRadius: 20, bearDuration: 900
   }
 };
 
-const OBSTACLES = [
-  { x: 1100, y: 800,  w: 200, h: 200, type: 'bush' },
-  { x: 300,  y: 300,  w: 150, h: 150, type: 'box'  },
-  { x: 1950, y: 250,  w: 180, h: 120, type: 'bush' },
-  { x: 200,  y: 1300, w: 200, h: 100, type: 'box'  },
-  { x: 1850, y: 1400, w: 160, h: 160, type: 'bush' },
-  { x: 600,  y: 700,  w: 120, h: 80,  type: 'box'  },
-  { x: 1700, y: 1000, w: 140, h: 100, type: 'box'  },
-  { x: 900,  y: 400,  w: 100, h: 250, type: 'box'  },
-  { x: 1400, y: 1200, w: 180, h: 80,  type: 'bush' },
+// ── TILE MAP (Showdown-style, 180° symmetric) ────────────────
+// .=empty  X=rock wall  B=box  C=power-cube crate  b=bush
+// W=water (blocks movement, bullets fly over)  S=spawn point
+const MAP_ASCII = [
+"..............................",
+".S......bb....S.....bb......S.",
+"........bb..XX..XX..bb........",
+"...BB.......X....X.......BB...",
+"...BB...C................C....",
+"..........bbb....bbb..........",
+".WW.......bbb....bbb.......WW.",
+".WW...X......BBBB......X...WW.",
+"......X.......BB.......X......",
+".S....X................X......",
+"............bbbbbb............",
+".....C.....bb.CC.bb.....C.....",
+"............bbbbbb............",
+"......X................X....S.",
+"......X.......BB.......X......",
+".WW...X......BBBB......X...WW.",
+".WW.......bbb....bbb.......WW.",
+"..........bbb....bbb..........",
+"....C................C...BB...",
+"...BB.......X....X.......BB...",
+"........bb..XX..XX..bb........",
+".S......bb.....S....bb......S.",
+"..............................",
 ];
+
+function buildTileMap() {
+  if (MAP_ASCII.length !== MAP_ROWS)
+    throw new Error(`MAP_ASCII has ${MAP_ASCII.length} rows, expected ${MAP_ROWS}`);
+  const grid = new Uint8Array(MAP_COLS*MAP_ROWS);
+  const boxHp = new Float32Array(MAP_COLS*MAP_ROWS);
+  const spawnPoints = [];
+  const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER};
+  for (let ty=0; ty<MAP_ROWS; ty++) {
+    const row = MAP_ASCII[ty];
+    if (row.length !== MAP_COLS)
+      throw new Error(`MAP_ASCII row ${ty} has ${row.length} cols, expected ${MAP_COLS}`);
+    for (let tx=0; tx<MAP_COLS; tx++) {
+      const ch = row[tx], t = CHAR_TILE[ch];
+      if (t === undefined) throw new Error(`MAP_ASCII bad char '${ch}' at ${tx},${ty}`);
+      const i = ty*MAP_COLS+tx;
+      grid[i] = t;
+      if (t === T_BOX)   boxHp[i] = BOX_HP;
+      if (t === T_CRATE) boxHp[i] = CRATE_HP;
+      if (ch === 'S') spawnPoints.push({ x:(tx+0.5)*TILE, y:(ty+0.5)*TILE });
+    }
+  }
+  return {
+    grid, boxHp, spawnPoints,
+    version: 0, // bumped when a box breaks (minimap cache invalidation)
+    tileAt(tx, ty) {
+      if (tx<0||ty<0||tx>=MAP_COLS||ty>=MAP_ROWS) return T_WALL;
+      return grid[ty*MAP_COLS+tx];
+    },
+    tileAtWorld(x, y) { return this.tileAt(Math.floor(x/TILE), Math.floor(y/TILE)); },
+    isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER; },
+    isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE; },
+    // Only checks the 2x2-3x3 tiles overlapping the circle.
+    circleHitsSolid(x, y, r, solidFn) {
+      const tx0=Math.floor((x-r)/TILE), tx1=Math.floor((x+r)/TILE);
+      const ty0=Math.floor((y-r)/TILE), ty1=Math.floor((y+r)/TILE);
+      for (let ty=ty0; ty<=ty1; ty++)
+        for (let tx=tx0; tx<=tx1; tx++) {
+          const t = this.tileAt(tx, ty);
+          if (!solidFn(t)) continue;
+          if (circleRect(x, y, r, tx*TILE, ty*TILE, TILE, TILE)) return { tx, ty, type:t };
+        }
+      return null;
+    },
+    damageBox(tx, ty, dmg) {
+      const i = ty*MAP_COLS+tx;
+      const t = grid[i];
+      if (t!==T_BOX && t!==T_CRATE) return null;
+      boxHp[i] -= dmg;
+      if (boxHp[i] > 0) return null;
+      grid[i] = T_EMPTY;
+      this.version++;
+      return t===T_CRATE ? 'crate' : 'box';
+    },
+    boxHpRatio(tx, ty) {
+      const i = ty*MAP_COLS+tx;
+      return boxHp[i] / (grid[i]===T_CRATE ? CRATE_HP : BOX_HP);
+    },
+    inBush(x, y) { return this.tileAtWorld(x, y) === T_BUSH; },
+  };
+}
+let tileMap = buildTileMap();
 
 // ── UTILS ────────────────────────────────────────────────────
 function rand(a, b)    { return Math.random() * (b - a) + a; }
@@ -117,8 +208,16 @@ function circleRect(cx, cy, cr, rx, ry, rw, rh) {
   const dx = cx-nx, dy = cy-ny;
   return dx*dx + dy*dy < cr*cr;
 }
-function pointInRect(px, py, rx, ry, rw, rh) {
-  return px>=rx && px<=rx+rw && py>=ry && py<=ry+rh;
+// Bush stealth visibility: a target hiding in a bush is only seen
+// when revealed (just attacked), at point-blank range, or when the
+// viewer shares nearby bushes.
+function canSee(viewer, target) {
+  if (!target.alive) return false;
+  if (!target.inBush || target.revealTimer>0) return true;
+  const d = dist(viewer.x, viewer.y, target.x, target.y);
+  if (d < 100) return true;
+  if (viewer.inBush && d < 180) return true;
+  return false;
 }
 
 // roundRect polyfill
@@ -141,28 +240,46 @@ if (!CanvasRenderingContext2D.prototype.roundRect) {
 
 // ── BULLET ───────────────────────────────────────────────────
 class Bullet {
-  constructor(x, y, angle, config, ownerId, isSuper=false) {
+  constructor(x, y, angle, config, ownerId, opts={}) {
     this.x = x; this.y = y;
     this.startX = x; this.startY = y;
     this.angle = angle;
     this.speed = config.bulletSpeed;
-    this.damage = isSuper ? (config.superDamage||config.damage) : config.damage;
-    this.range  = config.range * (isSuper ? 1.3 : 1);
+    this.isSuper = !!opts.isSuper;
+    this.damage = opts.damage !== undefined ? opts.damage
+                : (this.isSuper ? (config.superDamage||config.damage) : config.damage);
+    this.range  = opts.range !== undefined ? opts.range
+                : config.range * (this.isSuper ? 1.3 : 1);
+    this.pierces   = !!opts.pierces;   // Colt super: smashes boxes and keeps flying
+    this.knockback = !!opts.knockback; // Shelly super: pushes targets back
+    this.falloff   = !!config.falloff && !this.isSuper;
     this.ownerId = ownerId;
     this.radius = 4;
-    this.isSuper = isSuper;
     this.color = config.color;
     this.active = true;
-    if (config.spread > 0 && !isSuper)
+    if (config.spread > 0 && !this.isSuper)
       this.angle += rand(-config.spread/6, config.spread/6);
+  }
+  // Shotgun-style damage falls to 60% at max range
+  hitDamage() {
+    if (!this.falloff) return this.damage;
+    const t = Math.min(dist(this.startX,this.startY,this.x,this.y)/this.range, 1);
+    return this.damage * lerp(1, 0.6, t);
   }
   update() {
     this.x += Math.cos(this.angle)*this.speed;
     this.y += Math.sin(this.angle)*this.speed;
     if (dist(this.startX,this.startY,this.x,this.y) > this.range) { this.active=false; return; }
     if (this.x<0||this.x>ARENA_WIDTH||this.y<0||this.y>ARENA_HEIGHT) { this.active=false; return; }
-    for (const o of OBSTACLES)
-      if (pointInRect(this.x,this.y,o.x,o.y,o.w,o.h)) { this.active=false; return; }
+    const hit = tileMap.circleHitsSolid(this.x, this.y, this.radius, tileMap.isSolidForBullet);
+    if (hit) {
+      if (hit.type===T_BOX || hit.type===T_CRATE) {
+        const broken = tileMap.damageBox(hit.tx, hit.ty, this.isSuper ? 99999 : this.damage);
+        if (broken && game) game.onBoxDestroyed(hit.tx, hit.ty, broken);
+        if (this.pierces) return;
+      }
+      this.active = false;
+    }
   }
   render(ctx, cx, cy) {
     const sx = this.x-cx, sy = this.y-cy;
@@ -186,15 +303,17 @@ class Bullet {
 
 // ── BEAR (Nita's super) ──────────────────────────────────────
 class Bear {
-  constructor(x, y, ownerId) {
+  constructor(x, y, ownerId, damageMult=1) {
     this.x=x; this.y=y;
     this.ownerId=ownerId;
     const cfg = BRAWLER_CONFIGS.nita;
     this.hp=cfg.bearHp; this.maxHp=cfg.bearHp;
-    this.damage=cfg.bearDamage; this.speed=cfg.bearSpeed;
+    this.damage=cfg.bearDamage*damageMult; this.speed=cfg.bearSpeed;
     this.radius=cfg.bearRadius; this.color='#d2691e';
     this.active=true; this.lifeTimer=cfg.bearDuration;
     this.attackCooldown=0; this.flashTimer=0;
+    this.aggroRange=400;
+    this.stuckTimer=0; this.sideSign=1;
   }
   update(brawlers) {
     if (!this.active) return;
@@ -203,24 +322,34 @@ class Bear {
     if (this.attackCooldown>0) this.attackCooldown--;
     if (this.flashTimer>0) this.flashTimer--;
 
+    // Nearest visible enemy inside aggro range (bushes hide from the bear too)
     let nearest=null, nd=Infinity;
     for (const b of brawlers) {
-      if (b.id===this.ownerId||b.hp<=0) continue;
+      if (b.id===this.ownerId||!b.alive) continue;
       const d=dist(this.x,this.y,b.x,b.y);
-      if (d<nd) { nd=d; nearest=b; }
+      if (d<nd && d<this.aggroRange && canSee(this,b)) { nd=d; nearest=b; }
     }
-    if (!nearest) return;
-    const angle=Math.atan2(nearest.y-this.y, nearest.x-this.x);
+    // No prey: pad back toward the owner if she's alive
+    let goal=nearest;
+    if (!goal) {
+      const owner=brawlers.find(b=>b.id===this.ownerId);
+      if (owner&&owner.alive&&dist(this.x,this.y,owner.x,owner.y)>120) goal=owner;
+    }
+    if (!goal) return;
+    let angle=Math.atan2(goal.y-this.y, goal.x-this.x);
+    if (this.stuckTimer>0) { this.stuckTimer--; angle+=this.sideSign*Math.PI/2; }
     const nx=this.x+Math.cos(angle)*this.speed;
     const ny=this.y+Math.sin(angle)*this.speed;
-    let ok=true;
-    for (const o of OBSTACLES)
-      if (circleRect(nx,ny,this.radius,o.x,o.y,o.w,o.h)) { ok=false; break; }
-    if (ok && nx>this.radius && nx<ARENA_WIDTH-this.radius) this.x=nx;
-    if (ok && ny>this.radius && ny<ARENA_HEIGHT-this.radius) this.y=ny;
-    if (nd < this.radius+nearest.radius+10 && this.attackCooldown<=0) {
-      nearest.takeDamage(this.damage, this.ownerId);
-      this.attackCooldown=20;
+    let moved=false;
+    if (!tileMap.circleHitsSolid(nx,this.y,this.radius,tileMap.isSolidForMove)
+        && nx>this.radius && nx<ARENA_WIDTH-this.radius)  { this.x=nx; moved=true; }
+    if (!tileMap.circleHitsSolid(this.x,ny,this.radius,tileMap.isSolidForMove)
+        && ny>this.radius && ny<ARENA_HEIGHT-this.radius) { this.y=ny; moved=true; }
+    if (!moved && this.stuckTimer<=0) { this.stuckTimer=30; this.sideSign*=-1; }
+    if (nearest && nd < this.radius+nearest.radius+10 && this.attackCooldown<=0) {
+      const died=nearest.takeDamage(this.damage, this.ownerId);
+      if (died&&game) game.onBrawlerDeath(nearest, this.ownerId);
+      this.attackCooldown=25;
     }
   }
   takeDamage(amt) {
@@ -266,59 +395,91 @@ class Brawler {
     this.superCharge=0; this.maxSuperCharge=100;
     this.angle=0; this.moveX=0; this.moveY=0;
     this.flashTimer=0; this.shootFlash=0;
-    this.alive=true; this.respawnTimer=0; this.kills=0;
+    this.alive=true; this.kills=0; this.placement=null;
+    this.cubes=0;
+    this.inBush=false; this.revealTimer=0;
+    this.framesSinceDamage=9999;
     this.isDashing=false; this.dashTimer=0; this.dashAngle=0;
-    this.bearSummoned=false;
+    this.dashHitIds=null;
+    this.burst=null;          // Colt burst fire: {left, angle, timer, isSuper, damage, range}
+    this.pendingBullets=[];   // drained by Game each frame
   }
+  get damageMult() { return 1 + 0.1*this.cubes; }
   update() {
-    if (!this.alive) {
-      this.respawnTimer--;
-      if (this.respawnTimer<=0) this.respawn();
-      return;
-    }
+    if (!this.alive) return;
     if (this.shootCooldown>0) this.shootCooldown--;
     if (this.shootFlash>0)    this.shootFlash--;
     if (this.flashTimer>0)    this.flashTimer--;
+    if (this.revealTimer>0)   this.revealTimer--;
+    this.framesSinceDamage++;
     if (this.ammo<this.maxAmmo) {
       this.reloadTimer--;
       if (this.reloadTimer<=0) { this.ammo++; this.reloadTimer=this.config.reload; }
     }
+    // Regen after 3s without damage, ~13.8%/s like Brawl Stars
+    if (this.framesSinceDamage>180 && this.hp<this.maxHp) {
+      this.hp=Math.min(this.maxHp, this.hp+this.maxHp*0.0023);
+      if (game && game.frameCount%30===0) game.spawnParticles(this.x,this.y,'#66ff66',2);
+    }
+    // Colt fires his burst one bullet at a time, locked to the initial angle
+    if (this.burst) {
+      this.burst.timer--;
+      if (this.burst.timer<=0) { this.fireBurstBullet(); this.burst.timer=4; }
+      if (this.burst && this.burst.left<=0) this.burst=null;
+    }
+    this.inBush=tileMap.inBush(this.x,this.y);
     if (this.isDashing) { this.updateDash(); return; }
     this.updateMovement();
+  }
+  fireBurstBullet() {
+    const b=this.burst;
+    this.pendingBullets.push(new Bullet(
+      this.x+Math.cos(b.angle)*(this.radius+5),
+      this.y+Math.sin(b.angle)*(this.radius+5),
+      b.angle+(b.isSuper?rand(-0.04,0.04):0),
+      this.config, this.id,
+      { isSuper:b.isSuper, damage:b.damage, range:b.range, pierces:b.isSuper }));
+    b.left--;
+    if (game) game.sound.play('shoot');
   }
   updateMovement() {
     if (this.moveX===0 && this.moveY===0) return;
     const ma=Math.atan2(this.moveY,this.moveX);
     const nx=this.x+Math.cos(ma)*this.speed;
     const ny=this.y+Math.sin(ma)*this.speed;
-    let cx=true, cy=true;
-    for (const o of OBSTACLES) {
-      if (circleRect(nx,this.y,this.radius,o.x,o.y,o.w,o.h)) cx=false;
-      if (circleRect(this.x,ny,this.radius,o.x,o.y,o.w,o.h)) cy=false;
-    }
+    const cx=!tileMap.circleHitsSolid(nx,this.y,this.radius,tileMap.isSolidForMove);
+    const cy=!tileMap.circleHitsSolid(this.x,ny,this.radius,tileMap.isSolidForMove);
     if (cx && nx>this.radius && nx<ARENA_WIDTH-this.radius)  this.x=nx;
     if (cy && ny>this.radius && ny<ARENA_HEIGHT-this.radius) this.y=ny;
   }
-  // FIX: Bull dash — check obstacles and stop on collision
+  // Bull dash: single combined-vector check (no diagonal wall clipping),
+  // smashes through boxes/crates, stops at rocks/water/border.
   updateDash() {
     this.dashTimer--;
     const nx=this.x+Math.cos(this.dashAngle)*this.config.chargeSpeed;
     const ny=this.y+Math.sin(this.dashAngle)*this.config.chargeSpeed;
-    let blocked=false;
-    for (const o of OBSTACLES)
-      if (circleRect(nx,ny,this.radius,o.x,o.y,o.w,o.h)) { blocked=true; break; }
-    if (!blocked && nx>this.radius && nx<ARENA_WIDTH-this.radius)  this.x=nx;
-    else this.isDashing=false;
-    if (!blocked && ny>this.radius && ny<ARENA_HEIGHT-this.radius) this.y=ny;
-    else this.isDashing=false;
-    if (this.isDashing) this.dashDamageThisFrame=true;
+    const hit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove);
+    if (hit && (hit.type===T_BOX||hit.type===T_CRATE)) {
+      const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
+      if (broken && game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
+    } else if (hit || nx<this.radius || nx>ARENA_WIDTH-this.radius
+                   || ny<this.radius || ny>ARENA_HEIGHT-this.radius) {
+      this.isDashing=false; return;
+    }
+    this.x=nx; this.y=ny;
     if (this.dashTimer<=0) this.isDashing=false;
   }
   shoot() {
-    if (this.ammo<=0||this.shootCooldown>0||!this.alive) return [];
-    this.ammo--; this.shootCooldown=8;
+    if (this.ammo<=0||this.shootCooldown>0||!this.alive||this.burst) return [];
+    this.ammo--; this.shootCooldown=this.config.attackCooldown;
     if (this.reloadTimer<=0) this.reloadTimer=this.config.reload;
-    this.shootFlash=4;
+    this.shootFlash=4; this.revealTimer=60;
+    const dmg=this.config.damage*this.damageMult;
+    if (this.type==='colt') {
+      this.burst={ left:this.config.bulletCount, angle:this.angle, timer:1,
+                   isSuper:false, damage:dmg, range:this.config.range };
+      return [];
+    }
     const bullets=[];
     if (this.config.spread>0) {
       const step=this.config.spread/(this.config.bulletCount-1);
@@ -327,47 +488,55 @@ class Brawler {
         bullets.push(new Bullet(
           this.x+Math.cos(this.angle)*(this.radius+5),
           this.y+Math.sin(this.angle)*(this.radius+5),
-          start+step*i, this.config, this.id, false));
+          start+step*i, this.config, this.id, {damage:dmg}));
     } else {
       bullets.push(new Bullet(
         this.x+Math.cos(this.angle)*(this.radius+5),
         this.y+Math.sin(this.angle)*(this.radius+5),
-        this.angle, this.config, this.id, false));
+        this.angle, this.config, this.id, {damage:dmg}));
     }
     return bullets;
   }
   useSuper() {
     if (this.superCharge<this.maxSuperCharge||!this.alive) return null;
-    this.superCharge=0;
+    this.superCharge=0; this.revealTimer=60;
     const result={bullets:[], bear:null};
     switch(this.type) {
       case 'shelly': {
+        const dmg=this.config.superDamage*this.damageMult;
         const step=this.config.superSpread/(this.config.superBullets-1);
         const start=this.angle-this.config.superSpread/2;
         for (let i=0;i<this.config.superBullets;i++)
           result.bullets.push(new Bullet(
             this.x+Math.cos(this.angle)*(this.radius+5),
             this.y+Math.sin(this.angle)*(this.radius+5),
-            start+step*i, this.config, this.id, true));
+            start+step*i, this.config, this.id,
+            { isSuper:true, damage:dmg, range:this.config.range*1.3, knockback:true }));
         break;
       }
       case 'colt':
-        for (let i=0;i<this.config.superBurstCount;i++)
-          result.bullets.push(new Bullet(
-            this.x+Math.cos(this.angle)*(this.radius+5+i*12),
-            this.y+Math.sin(this.angle)*(this.radius+5+i*12),
-            this.angle+rand(-0.05,0.05), this.config, this.id, true));
+        this.burst={ left:this.config.superBurstCount, angle:this.angle, timer:1,
+                     isSuper:true, damage:this.config.superDamage*this.damageMult,
+                     range:this.config.range*1.5 };
         break;
       case 'bull':
         this.isDashing=true;
         this.dashTimer=this.config.chargeDuration;
         this.dashAngle=this.angle;
+        this.dashHitIds=new Set();
         break;
       case 'nita': {
-        const bx=this.x+Math.cos(this.angle)*40;
-        const by=this.y+Math.sin(this.angle)*40;
-        result.bear=new Bear(bx, by, this.id);
-        this.bearSummoned=true;
+        // Step the spawn point back toward Nita until it's clear of walls
+        const cfg=this.config;
+        let bx=this.x, by=this.y;
+        for (let d=40; d>=0; d-=10) {
+          const px=this.x+Math.cos(this.angle)*d;
+          const py=this.y+Math.sin(this.angle)*d;
+          if (!tileMap.circleHitsSolid(px,py,cfg.bearRadius,tileMap.isSolidForMove)) {
+            bx=px; by=py; break;
+          }
+        }
+        result.bear=new Bear(bx, by, this.id, this.damageMult);
         break;
       }
     }
@@ -376,28 +545,16 @@ class Brawler {
   takeDamage(amount, attackerId) {
     if (!this.alive) return false;
     this.hp-=amount; this.flashTimer=8;
-    if (this.hp<=0) {
-      this.hp=0; this.alive=false; this.respawnTimer=180; return true;
-    }
+    this.framesSinceDamage=0;
+    if (this.hp<=0) { this.hp=0; this.alive=false; return true; }
     return false;
   }
   chargeSuper(dmg) {
     this.superCharge=Math.min(this.maxSuperCharge, this.superCharge+dmg*this.config.superChargeRate);
   }
-  respawn() {
-    this.alive=true; this.hp=this.maxHp;
-    this.ammo=this.maxAmmo; this.superCharge=0; this.isDashing=false;
-    let safe=false, att=0;
-    while(!safe && att<50) {
-      this.x=rand(100,ARENA_WIDTH-100); this.y=rand(100,ARENA_HEIGHT-100);
-      safe=true;
-      for (const o of OBSTACLES)
-        if (circleRect(this.x,this.y,this.radius+10,o.x,o.y,o.w,o.h)) { safe=false; break; }
-      att++;
-    }
-  }
-  render(ctx, cx, cy) {
+  render(ctx, cx, cy, alpha=1) {
     if (!this.alive) return;
+    if (alpha<1) { ctx.save(); ctx.globalAlpha=alpha; }
     const sx=this.x-cx, sy=this.y-cy;
     // Aim line
     ctx.save();
@@ -431,6 +588,7 @@ class Brawler {
       ctx.beginPath(); ctx.arc(sx, sy+this.radius+8, 4, 0, TAU); ctx.stroke();
       ctx.restore();
     }
+    if (alpha<1) ctx.restore();
   }
   renderHpBar(ctx, sx, sy) {
     const bw=36, bh=5, bx=sx-bw/2, by=sy-this.radius-12;
@@ -441,76 +599,175 @@ class Brawler {
   }
 }
 
-// ── BOT AI (FIXED: shoot return value now used) ───────────────
+// ── BOT AI ────────────────────────────────────────────────────
+// Priority state machine: flee poison > retreat & heal > grab cube
+// > fight > break crates > wander. Bots can't see into bushes.
 class BotAI {
   constructor(brawler) {
     this.brawler=brawler;
     this.state='wander';
     this.wanderAngle=rand(0,TAU);
     this.wanderTimer=0;
-    this.detectionRange=380;
+    this.detectionRange=400;
     this.shootRange=brawler.config.range*0.85;
     this.reactionTimer=0;
-    this.superChance=0.008;
-    this.pendingShoot=false; // FIX: track shoot intent
+    this.strafePhase=rand(0,TAU);
+    this.lastX=brawler.x; this.lastY=brawler.y;
+    this.stuckCheckTimer=20; this.unstuckTimer=0; this.unstuckSign=1;
   }
-  // Returns { action: 'shoot'|'super'|null }
-  update(allBrawlers) {
-    this.pendingShoot=false;
-    if (!this.brawler.alive) return null;
-    if (this.brawler.isDashing) return null;
+  // Returns 'shoot' | 'super' | null
+  update(allBrawlers, game) {
+    const me=this.brawler;
+    if (!me.alive||me.isDashing) return null;
     if (this.reactionTimer>0) this.reactionTimer--;
+    me.moveX=0; me.moveY=0;
 
-    let nearest=null, nd=Infinity;
+    // Nearest visible enemy
+    let enemy=null, ed=Infinity;
     for (const b of allBrawlers) {
-      if (b.id===this.brawler.id||!b.alive) continue;
-      const d=dist(this.brawler.x,this.brawler.y,b.x,b.y);
-      if (d<nd) { nd=d; nearest=b; }
+      if (b.id===me.id||!b.alive) continue;
+      const d=dist(me.x,me.y,b.x,b.y);
+      if (d<ed && d<this.detectionRange && canSee(me,b)) { ed=d; enemy=b; }
     }
 
-    if (nearest && nd<this.detectionRange) {
-      this.state='chase';
-      const result=this.chaseBehavior(nearest, nd);
-      if (result==='shoot') this.pendingShoot=true;
+    let action=null;
+    const pz=game.poison;
+
+    if (pz.distInside(me.x,me.y)<60) {
+      // 1. Poison at our heels: run for the safe-zone centre
+      this.state='flee-poison';
+      const zb=pz.bounds();
+      const a=Math.atan2((zb.y0+zb.y1)/2-me.y, (zb.x0+zb.x1)/2-me.x);
+      me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
+    } else if (me.hp<0.35*me.maxHp && enemy && ed<300) {
+      // 2. Low HP under fire: panic super, then run for a bush
+      this.state='retreat';
+      if (me.superCharge>=me.maxSuperCharge && ed<250) {
+        me.angle=Math.atan2(enemy.y-me.y, enemy.x-me.x);
+        action='super';
+      }
+      const bush=this.findNearestTile(T_BUSH,5);
+      const a=bush ? Math.atan2(bush.y-me.y, bush.x-me.x)
+                   : Math.atan2(me.y-enemy.y, me.x-enemy.x);
+      me.moveX=Math.cos(a); me.moveY=Math.sin(a);
+    } else if (me.inBush && me.hp<0.7*me.maxHp && (!enemy||ed>220)) {
+      // 3. Wounded and hidden: sit still and let regen tick
+      this.state='heal';
     } else {
-      this.state='wander';
-      this.wanderBehavior();
+      let cube=null, cd=Infinity;
+      for (const c of game.cubes) {
+        const d=dist(me.x,me.y,c.x,c.y);
+        if (d<cd && d<350) { cd=d; cube=c; }
+      }
+      if (cube && (!enemy||ed>200)) {
+        // 4. Free power cube nearby
+        this.state='grab-cube';
+        const a=Math.atan2(cube.y-me.y, cube.x-me.x);
+        me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
+      } else if (enemy) {
+        // 5. Fight
+        this.state='fight';
+        if (this.trySuper(enemy,ed)) action='super';
+        else action=this.fight(enemy,ed);
+      } else {
+        // 6. Crack open cube crates, otherwise wander
+        const crate=this.findNearestTile(T_CRATE,5);
+        if (crate) {
+          this.state='break-crate';
+          const a=Math.atan2(crate.y-me.y, crate.x-me.x);
+          me.angle=a;
+          if (crate.d>me.config.range*0.7) { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+          else if (me.ammo>0&&!me.burst&&this.reactionTimer<=0) {
+            this.reactionTimer=12+randInt(0,10);
+            action='shoot';
+          }
+        } else {
+          this.wanderBehavior(game);
+        }
+      }
     }
 
-    if (this.brawler.superCharge>=this.brawler.maxSuperCharge && Math.random()<this.superChance)
-      return 'super';
-    if (this.pendingShoot) return 'shoot'; // FIX: propagate shoot
-    return null;
+    this.antiStuck(me);
+    return action;
   }
-  chaseBehavior(target, td) {
-    this.brawler.angle=Math.atan2(target.y-this.brawler.y, target.x-this.brawler.x);
-    if (td > this.shootRange*0.5) {
-      const a=Math.atan2(target.y-this.brawler.y, target.x-this.brawler.x);
-      this.brawler.moveX=Math.cos(a); this.brawler.moveY=Math.sin(a);
-    } else if (td < this.shootRange*0.3) {
-      const a=Math.atan2(target.y-this.brawler.y, target.x-this.brawler.x);
-      this.brawler.moveX=-Math.cos(a)*0.5; this.brawler.moveY=-Math.sin(a)*0.5;
-    } else {
-      this.brawler.moveX=0; this.brawler.moveY=0;
+  trySuper(enemy, ed) {
+    const me=this.brawler;
+    if (me.superCharge<me.maxSuperCharge) return false;
+    const angTo=Math.atan2(enemy.y-me.y, enemy.x-me.x);
+    let ok=false;
+    switch(me.type) {
+      case 'bull':   ok = ed>120 && ed<350; break;
+      case 'nita':   ok = ed<280; break;
+      case 'shelly': ok = ed<me.config.range*0.8; break;
+      case 'colt':   ok = ed<me.config.range*1.2; break;
     }
-    if (td<this.shootRange && this.brawler.ammo>0 && this.reactionTimer<=0) {
-      this.reactionTimer=5+randInt(0,8);
+    if (!ok && me.hp<0.25*me.maxHp && ed<250) ok=true;
+    if (ok) me.angle=angTo;
+    return ok;
+  }
+  fight(enemy, ed) {
+    const me=this.brawler;
+    const a=Math.atan2(enemy.y-me.y, enemy.x-me.x);
+    me.angle=a;
+    this.strafePhase+=0.04;
+    const strafe=Math.sin(this.strafePhase);
+    let mx=0, my=0;
+    if (ed>this.shootRange*0.6)      { mx=Math.cos(a); my=Math.sin(a); }
+    else if (ed<this.shootRange*0.3) { mx=-Math.cos(a)*0.7; my=-Math.sin(a)*0.7; }
+    mx+=Math.cos(a+Math.PI/2)*strafe*0.6;
+    my+=Math.sin(a+Math.PI/2)*strafe*0.6;
+    me.moveX=mx; me.moveY=my;
+    if (ed<this.shootRange && me.ammo>0 && !me.burst && this.reactionTimer<=0) {
+      this.reactionTimer=8+randInt(0,10);
       return 'shoot';
     }
     return null;
   }
-  wanderBehavior() {
+  findNearestTile(type, radiusTiles) {
+    const me=this.brawler;
+    const mtx=Math.floor(me.x/TILE), mty=Math.floor(me.y/TILE);
+    let best=null, bd=Infinity;
+    for (let ty=mty-radiusTiles; ty<=mty+radiusTiles; ty++)
+      for (let tx=mtx-radiusTiles; tx<=mtx+radiusTiles; tx++) {
+        if (tileMap.tileAt(tx,ty)!==type) continue;
+        const cx=(tx+0.5)*TILE, cy=(ty+0.5)*TILE;
+        const d=dist(me.x,me.y,cx,cy);
+        if (d<bd) { bd=d; best={x:cx, y:cy, d}; }
+      }
+    return best;
+  }
+  wanderBehavior(game) {
+    this.state='wander';
     this.wanderTimer--;
     if (this.wanderTimer<=0) {
       this.wanderAngle=rand(0,TAU);
-      this.wanderTimer=randInt(30,90);
+      this.wanderTimer=randInt(40,100);
+    }
+    // Drift toward the safe zone centre when near the poison edge
+    if (game.poison.distInside(this.brawler.x,this.brawler.y)<200) {
+      const zb=game.poison.bounds();
+      this.wanderAngle=Math.atan2((zb.y0+zb.y1)/2-this.brawler.y,(zb.x0+zb.x1)/2-this.brawler.x);
     }
     this.brawler.moveX=Math.cos(this.wanderAngle);
     this.brawler.moveY=Math.sin(this.wanderAngle);
     this.brawler.angle=this.wanderAngle;
-    if (this.brawler.x<200||this.brawler.x>ARENA_WIDTH-200||
-        this.brawler.y<200||this.brawler.y>ARENA_HEIGHT-200)
-      this.wanderAngle=Math.atan2(ARENA_HEIGHT/2-this.brawler.y, ARENA_WIDTH/2-this.brawler.x);
+  }
+  // When pressed against a wall, slide perpendicular for a moment
+  antiStuck(me) {
+    this.stuckCheckTimer--;
+    if (this.stuckCheckTimer<=0) {
+      const moved=dist(me.x,me.y,this.lastX,this.lastY);
+      if ((me.moveX!==0||me.moveY!==0) && moved<3) {
+        this.unstuckTimer=30; this.unstuckSign*=-1;
+      }
+      this.lastX=me.x; this.lastY=me.y; this.stuckCheckTimer=20;
+    }
+    if (this.unstuckTimer>0 && (me.moveX!==0||me.moveY!==0)) {
+      this.unstuckTimer--;
+      const a=Math.atan2(me.moveY,me.moveX)+this.unstuckSign*Math.PI/2;
+      const m=Math.min(Math.hypot(me.moveX,me.moveY),1);
+      me.moveX=Math.cos(a)*m; me.moveY=Math.sin(a)*m;
+    }
   }
 }
 
@@ -534,6 +791,152 @@ class Particle {
     ctx.fillStyle=this.color;
     ctx.fillRect(this.x-cx-this.size/2, this.y-cy-this.size/2, this.size, this.size);
     ctx.restore();
+  }
+}
+
+// ── POWER CUBE ───────────────────────────────────────────────
+class PowerCube {
+  constructor(x, y) {
+    this.x=x; this.y=y; this.active=true;
+    this.bobPhase=rand(0,TAU);
+  }
+  render(ctx) {
+    const bob=Math.sin((game?game.frameCount:0)*0.1+this.bobPhase)*3;
+    ctx.save();
+    ctx.translate(this.x, this.y+bob);
+    ctx.rotate(Math.PI/4);
+    ctx.fillStyle='#bb44ff';
+    ctx.shadowColor='#bb44ff'; ctx.shadowBlur=10;
+    ctx.fillRect(-9,-9,18,18);
+    ctx.shadowBlur=0;
+    ctx.strokeStyle='#eeccff'; ctx.lineWidth=2;
+    ctx.strokeRect(-9,-9,18,18);
+    ctx.restore();
+  }
+}
+
+// ── POISON ZONE (shrinking showdown cloud) ──────────────────
+class PoisonZone {
+  constructor() {
+    this.ring=0; this.maxRing=10;
+    this.nextShrinkSec=20; this.shrinkInterval=10;
+    this.warnTimer=0; this.tickTimer=0;
+  }
+  bounds() {
+    const m=this.ring*TILE;
+    return { x0:m, y0:m, x1:ARENA_WIDTH-m, y1:ARENA_HEIGHT-m };
+  }
+  contains(x, y) {
+    const b=this.bounds();
+    return x>=b.x0 && x<=b.x1 && y>=b.y0 && y<=b.y1;
+  }
+  // Distance to the nearest zone edge; negative when outside
+  distInside(x, y) {
+    const b=this.bounds();
+    return Math.min(x-b.x0, b.x1-x, y-b.y0, b.y1-y);
+  }
+  update(game) {
+    const elapsed=MATCH_DURATION-game.matchTimer;
+    if (this.ring<this.maxRing) {
+      if (elapsed>=this.nextShrinkSec) {
+        this.ring++; this.nextShrinkSec+=this.shrinkInterval;
+        this.warnTimer=0;
+        game.sound.play('poisonWarn');
+      } else if (elapsed>=this.nextShrinkSec-3) {
+        this.warnTimer=2; // kept alive while inside the warning window
+      }
+    }
+    if (this.warnTimer>0) this.warnTimer--;
+    this.tickTimer++;
+    if (this.tickTimer>=15) {
+      this.tickTimer=0;
+      // 250 every 15 frames = 1000 dmg/s; doesn't charge anyone's super
+      for (const b of game.brawlers) {
+        if (!b.alive||this.contains(b.x,b.y)) continue;
+        const died=b.takeDamage(250, null);
+        if (b.isPlayer) game.sound.play('poisonTick');
+        if (died) game.onBrawlerDeath(b, null);
+      }
+      for (const bear of game.bears)
+        if (bear.active && !this.contains(bear.x,bear.y)) bear.takeDamage(250);
+    }
+  }
+  render(ctx) {
+    const b=this.bounds();
+    ctx.save();
+    ctx.fillStyle='rgba(40,90,30,0.55)';
+    if (b.y0>0)            ctx.fillRect(0, 0, ARENA_WIDTH, b.y0);
+    if (b.y1<ARENA_HEIGHT) ctx.fillRect(0, b.y1, ARENA_WIDTH, ARENA_HEIGHT-b.y1);
+    if (b.x0>0)            ctx.fillRect(0, b.y0, b.x0, b.y1-b.y0);
+    if (b.x1<ARENA_WIDTH)  ctx.fillRect(b.x1, b.y0, ARENA_WIDTH-b.x1, b.y1-b.y0);
+    const pulse=0.45+0.25*Math.sin((game?game.frameCount:0)*0.08);
+    ctx.strokeStyle=`rgba(120,255,80,${pulse})`;
+    ctx.lineWidth=4;
+    ctx.strokeRect(b.x0, b.y0, b.x1-b.x0, b.y1-b.y0);
+    ctx.restore();
+  }
+}
+
+// ── SOUND (Web Audio synthesis, no files) ────────────────────
+class SoundManager {
+  constructor() { this.ctx=null; this.master=null; this.lastPlayed={}; }
+  // Must be called from a user gesture (tap/click) for iOS/Chrome autoplay policy
+  unlock() {
+    if (!this.ctx) {
+      try {
+        const AC=window.AudioContext||window.webkitAudioContext;
+        this.ctx=new AC();
+        this.master=this.ctx.createGain();
+        this.master.gain.value=0.3;
+        this.master.connect(this.ctx.destination);
+      } catch(e) { this.ctx=null; }
+    }
+    if (this.ctx && this.ctx.state==='suspended') this.ctx.resume();
+  }
+  tone(freq, dur, type='square', vol=1, freqEnd=null) {
+    if (!this.ctx) return;
+    const t=this.ctx.currentTime;
+    const o=this.ctx.createOscillator(), g=this.ctx.createGain();
+    o.type=type;
+    o.frequency.setValueAtTime(freq, t);
+    if (freqEnd!==null) o.frequency.exponentialRampToValueAtTime(Math.max(freqEnd,1), t+dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    o.connect(g); g.connect(this.master);
+    o.start(t); o.stop(t+dur);
+  }
+  noise(dur, vol=1, filterFreq=1000) {
+    if (!this.ctx) return;
+    const t=this.ctx.currentTime;
+    const len=Math.max(1, Math.floor(this.ctx.sampleRate*dur));
+    const buf=this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+    const data=buf.getChannelData(0);
+    for (let i=0;i<len;i++) data[i]=Math.random()*2-1;
+    const src=this.ctx.createBufferSource(); src.buffer=buf;
+    const f=this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=filterFreq;
+    const g=this.ctx.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+    src.connect(f); f.connect(g); g.connect(this.master);
+    src.start(t);
+  }
+  play(name) {
+    if (!this.ctx) return;
+    const now=performance.now();
+    if (this.lastPlayed[name] && now-this.lastPlayed[name]<50) return; // anti-spam
+    this.lastPlayed[name]=now;
+    switch(name) {
+      case 'shoot':      this.noise(0.06,0.5,2500); this.tone(200,0.07,'square',0.25,120); break;
+      case 'hit':        this.tone(160,0.06,'triangle',0.5); break;
+      case 'super':      this.tone(100,0.3,'sawtooth',0.5,600); break;
+      case 'boxBreak':   this.noise(0.25,0.7,400); break;
+      case 'cubePickup': this.tone(660,0.09,'sine',0.5); setTimeout(()=>this.tone(990,0.12,'sine',0.5),90); break;
+      case 'death':      this.tone(300,0.4,'sawtooth',0.6,60); break;
+      case 'poisonTick': this.tone(90,0.1,'sine',0.4); break;
+      case 'poisonWarn': this.tone(440,0.15,'square',0.4); setTimeout(()=>this.tone(440,0.15,'square',0.4),200); break;
+      case 'victory':    [523,659,784,1047].forEach((f,i)=>setTimeout(()=>this.tone(f,0.25,'square',0.5),i*150)); break;
+      case 'defeat':     [392,330,262].forEach((f,i)=>setTimeout(()=>this.tone(f,0.3,'square',0.5),i*200)); break;
+    }
   }
 }
 
@@ -603,6 +1006,12 @@ class Game {
     this.frameCount=0;
 
     this.brawlers=[]; this.bullets=[]; this.bears=[]; this.particles=[]; this.botAIs=[];
+    this.cubes=[];
+    this.poison=new PoisonZone();
+    this.sound=new SoundManager();
+    this.aliveCount=0;
+    this.gameOverDelay=0;
+    this.mmCanvas=null; this.mmVersion=-1; // minimap tile cache
     this.player=null;
     this.camera={x:0,y:0};
     this.keys={};
@@ -650,6 +1059,7 @@ class Game {
       this.updateHover();
     });
     this.canvas.addEventListener('mousedown',e=>{
+      this.sound.unlock();
       if (e.button===0) this.mouse.down=true;
       if (this.state===GameState.MENU||this.state===GameState.GAME_OVER)
         this.handleMenuClick();
@@ -672,6 +1082,7 @@ class Game {
 
   // ── TOUCH HANDLERS ───────────────────────────────────────
   onTouchStart(e) {
+    this.sound.unlock();
     for (const t of e.changedTouches) {
       const p=this.toCanvasCoords(t.clientX,t.clientY);
       if (this.state===GameState.MENU||this.state===GameState.GAME_OVER) {
@@ -748,7 +1159,8 @@ class Game {
     if (!this.player) return null;
     let best=null, bd=Infinity;
     for (const b of this.brawlers) {
-      if (b.id===this.player.id||!b.alive) continue;
+      // canSee: never auto-aim at enemies hidden in bushes
+      if (b.id===this.player.id||!b.alive||!canSee(this.player,b)) continue;
       const d=dist(this.player.x,this.player.y,b.x,b.y);
       if (d<bd&&d<range) { bd=d; best=b; }
     }
@@ -757,9 +1169,17 @@ class Game {
 
   playerShoot() {
     if (!this.player) return;
+    const hadAmmoBurst=!!this.player.burst;
     const bs=this.player.shoot();
     if (bs.length) {
       this.bullets.push(...bs);
+      this.sound.play('shoot');
+      this.spawnParticles(
+        this.player.x+Math.cos(this.player.angle)*this.player.radius,
+        this.player.y+Math.sin(this.player.angle)*this.player.radius,
+        this.player.color, 6);
+    } else if (!hadAmmoBurst&&this.player.burst) {
+      // Colt: shot accepted, bullets stream out via burst
       this.spawnParticles(
         this.player.x+Math.cos(this.player.angle)*this.player.radius,
         this.player.y+Math.sin(this.player.angle)*this.player.radius,
@@ -771,27 +1191,32 @@ class Game {
     this.state=GameState.PLAYING;
     this.matchTimer=MATCH_DURATION; this.matchTimerDisplay=MATCH_DURATION;
     this.brawlers=[]; this.bullets=[]; this.bears=[]; this.particles=[]; this.botAIs=[];
+    this.cubes=[];
+    tileMap=buildTileMap();
+    this.poison=new PoisonZone();
+    this.mmCanvas=null; this.mmVersion=-1;
     this.frameCount=0;
     this.touchAimMode=null;
+    this.gameOverDelay=0;
 
-    const px=rand(300,ARENA_WIDTH-300), py=rand(300,ARENA_HEIGHT-300);
-    this.player=new Brawler('player',type,px,py,true);
+    // Shuffle the 8 map spawn points; player takes one, bots take the rest
+    const spawns=[...tileMap.spawnPoints];
+    for (let i=spawns.length-1;i>0;i--) {
+      const j=randInt(0,i); [spawns[i],spawns[j]]=[spawns[j],spawns[i]];
+    }
+    this.player=new Brawler('player',type,spawns[0].x,spawns[0].y,true);
     this.brawlers.push(this.player);
-
-    const others=['shelly','colt','bull','nita'].filter(t=>t!==type);
-    others.forEach((bt,i)=>{
-      let bx,by,safe,att=0;
-      do {
-        safe=true; bx=rand(200,ARENA_WIDTH-200); by=rand(200,ARENA_HEIGHT-200);
-        if (dist(bx,by,px,py)<300) safe=false;
-        for (const o of OBSTACLES)
-          if (circleRect(bx,by,25,o.x,o.y,o.w,o.h)) safe=false;
-        att++;
-      } while(!safe&&att<50);
-      const bot=new Brawler(`bot_${i}`,bt,bx,by,false);
+    const types=['shelly','colt','bull','nita'];
+    for (let i=1;i<TOTAL_PLAYERS;i++) {
+      const sp=spawns[i%spawns.length];
+      const bot=new Brawler(`bot_${i}`,types[i%4],sp.x,sp.y,false);
       this.brawlers.push(bot);
       this.botAIs.push(new BotAI(bot));
-    });
+    }
+    this.aliveCount=TOTAL_PLAYERS;
+    // Snap camera to spawn
+    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-CANVAS_WIDTH,this.player.x-CANVAS_WIDTH/2));
+    this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-CANVAS_HEIGHT,this.player.y-CANVAS_HEIGHT/2));
   }
 
   activatePlayerSuper(angle) {
@@ -803,8 +1228,52 @@ class Game {
     if (r) {
       if (r.bullets) this.bullets.push(...r.bullets);
       if (r.bear)    this.bears.push(r.bear);
+      this.sound.play('super');
       this.spawnParticles(this.player.x, this.player.y, this.player.color, 20);
     }
+  }
+
+  // ── SHOWDOWN EVENTS ───────────────────────────────────────
+  onBoxDestroyed(tx, ty, kind) {
+    const cx=(tx+0.5)*TILE, cy=(ty+0.5)*TILE;
+    this.spawnParticles(cx, cy, '#8b7355', 12);
+    this.sound.play('boxBreak');
+    if (kind==='crate') this.cubes.push(new PowerCube(cx, cy));
+  }
+
+  onBrawlerDeath(b, killerId) {
+    if (b.placement!==null) return; // already processed
+    b.placement=this.aliveCount;
+    this.aliveCount--;
+    this.spawnExplosion(b.x, b.y, b.color);
+    this.sound.play('death');
+    // Dead brawlers drop their cubes
+    for (let i=0;i<b.cubes;i++) {
+      const a=rand(0,TAU), d=rand(10,40);
+      let cx=b.x+Math.cos(a)*d, cy=b.y+Math.sin(a)*d;
+      if (tileMap.circleHitsSolid(cx,cy,10,tileMap.isSolidForMove)) { cx=b.x; cy=b.y; }
+      this.cubes.push(new PowerCube(cx, cy));
+    }
+    if (killerId) {
+      const killer=this.brawlers.find(x=>x.id===killerId);
+      if (killer) killer.kills++;
+    }
+    if (this.aliveCount<=1) {
+      const last=this.brawlers.find(x=>x.alive);
+      if (last) last.placement=1;
+      this.gameOverDelay=90;
+    } else if (b.isPlayer) {
+      this.gameOverDelay=120; // show the field a moment before the results
+    }
+  }
+
+  endMatch() {
+    // Timer ran out / delay elapsed: rank whoever is still standing
+    const alive=this.brawlers.filter(x=>x.alive&&x.placement===null)
+      .sort((a,b)=>(b.hp+b.cubes*400)-(a.hp+a.cubes*400));
+    alive.forEach((x,i)=>x.placement=i+1);
+    this.state=GameState.GAME_OVER;
+    this.sound.play(this.player&&this.player.placement===1?'victory':'defeat');
   }
 
   spawnParticles(x,y,color,n) {
@@ -814,6 +1283,17 @@ class Game {
   spawnExplosion(x,y,color) {
     for(let i=0;i<30;i++)
       this.particles.push(new Particle(x,y,color,rand(2,6),randInt(20,45),randInt(3,7)));
+  }
+
+  // Shelly super: push the target along the bullet path, stopping at walls
+  applyKnockback(b, angle, distPx) {
+    const steps=5, step=distPx/steps;
+    for (let i=0;i<steps;i++) {
+      const nx=b.x+Math.cos(angle)*step, ny=b.y+Math.sin(angle)*step;
+      if (tileMap.circleHitsSolid(nx,ny,b.radius,tileMap.isSolidForMove)) break;
+      if (nx<b.radius||nx>ARENA_WIDTH-b.radius||ny<b.radius||ny>ARENA_HEIGHT-b.radius) break;
+      b.x=nx; b.y=ny;
+    }
   }
 
   loop(ts) {
@@ -826,11 +1306,15 @@ class Game {
   }
 
   update() {
-    // Timer
+    // Timer (fail-safe — matches normally end by elimination)
     if (this.frameCount%60===0) {
       this.matchTimer--;
       this.matchTimerDisplay=Math.max(0,this.matchTimer);
-      if (this.matchTimer<=0) { this.state=GameState.GAME_OVER; return; }
+      if (this.matchTimer<=0) { this.endMatch(); return; }
+    }
+    if (this.gameOverDelay>0) {
+      this.gameOverDelay--;
+      if (this.gameOverDelay<=0) { this.endMatch(); return; }
     }
 
     // Player input
@@ -866,13 +1350,14 @@ class Game {
     // Update brawlers
     for (const b of this.brawlers) b.update();
 
-    // Bot AI — FIX: action now correctly drives shooting
+    // Bot AI
     for (const ai of this.botAIs) {
-      const action=ai.update(this.brawlers);
+      const action=ai.update(this.brawlers, this);
       if (action==='shoot') {
         const bs=ai.brawler.shoot();
         if (bs.length) {
           this.bullets.push(...bs);
+          this.sound.play('shoot');
           this.spawnParticles(
             ai.brawler.x+Math.cos(ai.brawler.angle)*ai.brawler.radius,
             ai.brawler.y+Math.sin(ai.brawler.angle)*ai.brawler.radius,
@@ -881,11 +1366,39 @@ class Game {
       } else if (action==='super') {
         const r=ai.brawler.useSuper();
         if (r) {
-          if (r.bullets) this.bullets.push(...r.bullets);
-          if (r.bear)    this.bears.push(r.bear);
+          if (r.bullets.length) this.bullets.push(...r.bullets);
+          if (r.bear)           this.bears.push(r.bear);
+          this.sound.play('super');
         }
       }
     }
+
+    // Drain burst-fire bullets (Colt)
+    for (const b of this.brawlers) {
+      if (b.pendingBullets.length) {
+        this.bullets.push(...b.pendingBullets);
+        b.pendingBullets.length=0;
+      }
+    }
+
+    // Poison cloud
+    this.poison.update(this);
+
+    // Power cube pickup
+    for (const c of this.cubes) {
+      if (!c.active) continue;
+      for (const b of this.brawlers) {
+        if (!b.alive) continue;
+        if (dist(c.x,c.y,b.x,b.y) < b.radius+14) {
+          c.active=false;
+          b.cubes++; b.maxHp+=400; b.hp+=400;
+          this.spawnParticles(c.x,c.y,'#bb44ff',10);
+          if (b.isPlayer) this.sound.play('cubePickup');
+          break;
+        }
+      }
+    }
+    this.cubes=this.cubes.filter(c=>c.active);
 
     // Update projectiles & entities
     for (const b of this.bullets) b.update();
@@ -895,35 +1408,54 @@ class Game {
     for (const p of this.particles) p.update();
     this.particles=this.particles.filter(p=>p.active);
 
-    // Bullet vs Brawler collision
+    // Bullet vs Brawler / Bear collision
     for (const bullet of this.bullets) {
       if (!bullet.active) continue;
+      let consumed=false;
       for (const brawler of this.brawlers) {
         if (bullet.ownerId===brawler.id||!brawler.alive) continue;
         if (dist(bullet.x,bullet.y,brawler.x,brawler.y) < bullet.radius+brawler.radius) {
-          bullet.active=false;
-          const died=brawler.takeDamage(bullet.damage, bullet.ownerId);
+          bullet.active=false; consumed=true;
+          const dmg=bullet.hitDamage();
+          const died=brawler.takeDamage(dmg, bullet.ownerId);
           this.spawnParticles(bullet.x, bullet.y, brawler.color, 6);
+          this.sound.play('hit');
           const att=this.brawlers.find(b=>b.id===bullet.ownerId);
-          if (att) { att.chargeSuper(bullet.damage); }
-          if (died&&att) { att.kills++; this.spawnExplosion(brawler.x,brawler.y,brawler.color); }
+          if (att&&att.alive) att.chargeSuper(dmg);
+          if (bullet.knockback&&!died) this.applyKnockback(brawler, bullet.angle, 50);
+          if (died) this.onBrawlerDeath(brawler, bullet.ownerId);
+          break;
+        }
+      }
+      if (consumed) continue;
+      for (const bear of this.bears) {
+        if (!bear.active||bullet.ownerId===bear.ownerId) continue;
+        if (dist(bullet.x,bullet.y,bear.x,bear.y) < bullet.radius+bear.radius) {
+          bullet.active=false;
+          const dmg=bullet.hitDamage();
+          bear.takeDamage(dmg);
+          this.spawnParticles(bullet.x, bullet.y, bear.color, 5);
+          this.sound.play('hit');
+          const att=this.brawlers.find(b=>b.id===bullet.ownerId);
+          if (att&&att.alive) att.chargeSuper(dmg*0.5);
           break;
         }
       }
     }
 
-    // Bull dash damage
+    // Bull dash damage — once per enemy per dash
     for (const b of this.brawlers) {
-      if (b.isDashing&&b.dashDamageThisFrame) {
-        b.dashDamageThisFrame=false;
-        for (const t of this.brawlers) {
-          if (t.id===b.id||!t.alive) continue;
-          if (dist(b.x,b.y,t.x,t.y) < b.radius+t.radius+10) {
-            const died=t.takeDamage(b.config.superDamage, b.id);
-            b.chargeSuper(b.config.superDamage);
-            this.spawnParticles(t.x,t.y,t.color,10);
-            if (died) { b.kills++; this.spawnExplosion(t.x,t.y,t.color); }
-          }
+      if (!b.isDashing||!b.dashHitIds) continue;
+      for (const t of this.brawlers) {
+        if (t.id===b.id||!t.alive||b.dashHitIds.has(t.id)) continue;
+        if (dist(b.x,b.y,t.x,t.y) < b.radius+t.radius+10) {
+          b.dashHitIds.add(t.id);
+          const dmg=b.config.superDamage*b.damageMult;
+          const died=t.takeDamage(dmg, b.id);
+          b.chargeSuper(dmg);
+          this.spawnParticles(t.x,t.y,t.color,10);
+          this.sound.play('hit');
+          if (died) this.onBrawlerDeath(t, b.id);
         }
       }
     }
@@ -1064,52 +1596,89 @@ class Game {
     ctx.save();
     ctx.translate(-this.camera.x,-this.camera.y);
 
-    // Grid
-    ctx.strokeStyle='rgba(0,0,0,0.04)'; ctx.lineWidth=1;
-    const gs=60;
-    const gsx=Math.floor(this.camera.x/gs)*gs;
-    const gsy=Math.floor(this.camera.y/gs)*gs;
-    for(let x=gsx;x<this.camera.x+w+gs;x+=gs) {
-      ctx.beginPath(); ctx.moveTo(x,this.camera.y); ctx.lineTo(x,this.camera.y+h); ctx.stroke();
-    }
-    for(let y=gsy;y<this.camera.y+h+gs;y+=gs) {
-      ctx.beginPath(); ctx.moveTo(this.camera.x,y); ctx.lineTo(this.camera.x+w,y); ctx.stroke();
+    // Visible tile window
+    const tx0=Math.max(0,Math.floor(this.camera.x/TILE));
+    const ty0=Math.max(0,Math.floor(this.camera.y/TILE));
+    const tx1=Math.min(MAP_COLS-1,Math.floor((this.camera.x+w)/TILE));
+    const ty1=Math.min(MAP_ROWS-1,Math.floor((this.camera.y+h)/TILE));
+
+    // Checkerboard ground
+    ctx.fillStyle='rgba(0,0,0,0.03)';
+    for (let ty=ty0;ty<=ty1;ty++)
+      for (let tx=tx0;tx<=tx1;tx++)
+        if ((tx+ty)%2===0) ctx.fillRect(tx*TILE,ty*TILE,TILE,TILE);
+
+    // Tiles
+    for (let ty=ty0;ty<=ty1;ty++) {
+      for (let tx=tx0;tx<=tx1;tx++) {
+        const t=tileMap.tileAt(tx,ty);
+        if (t===T_EMPTY) continue;
+        const x=tx*TILE, y=ty*TILE;
+        if (t===T_WALL) {
+          ctx.fillStyle='#9a9aa8'; ctx.fillRect(x,y+8,TILE,TILE-8);
+          ctx.fillStyle='#c2c2d0'; ctx.fillRect(x,y,TILE,TILE-12);
+          ctx.strokeStyle='#6e6e80'; ctx.lineWidth=2; ctx.strokeRect(x+1,y+1,TILE-2,TILE-2);
+        } else if (t===T_BOX||t===T_CRATE) {
+          ctx.fillStyle='#8b7355'; ctx.fillRect(x+4,y+4,TILE-8,TILE-8);
+          ctx.strokeStyle='#6b5a3e'; ctx.lineWidth=3; ctx.strokeRect(x+4,y+4,TILE-8,TILE-8);
+          ctx.strokeStyle='#7a6548'; ctx.lineWidth=2;
+          ctx.beginPath();
+          ctx.moveTo(x+9,y+9); ctx.lineTo(x+TILE-9,y+TILE-9);
+          ctx.moveTo(x+TILE-9,y+9); ctx.lineTo(x+9,y+TILE-9);
+          ctx.stroke();
+          if (t===T_CRATE) {
+            ctx.fillStyle='#bb44ff';
+            ctx.save(); ctx.translate(x+TILE/2,y+TILE/2); ctx.rotate(Math.PI/4);
+            ctx.fillRect(-8,-8,16,16); ctx.restore();
+          }
+          const r=tileMap.boxHpRatio(tx,ty);
+          if (r<1) {
+            ctx.fillStyle='#333'; ctx.fillRect(x+10,y-4,TILE-20,5);
+            ctx.fillStyle=r>0.5?'#00ff00':'#ffaa00';
+            ctx.fillRect(x+10,y-4,(TILE-20)*Math.max(r,0),5);
+          }
+        } else if (t===T_BUSH) {
+          ctx.fillStyle='#3a8c2a'; ctx.fillRect(x,y,TILE,TILE);
+          ctx.fillStyle='#4aaa35';
+          for (let i=0;i<4;i++) {
+            // deterministic leaf placement (no flicker)
+            const lx=x+((tx*7+ty*13+i*29)%60)+10;
+            const ly=y+((tx*17+ty*5+i*41)%60)+10;
+            ctx.beginPath(); ctx.arc(lx,ly,7,0,TAU); ctx.fill();
+          }
+        } else if (t===T_WATER) {
+          ctx.fillStyle='#3d9fd6'; ctx.fillRect(x,y,TILE,TILE);
+          ctx.strokeStyle='rgba(255,255,255,0.35)'; ctx.lineWidth=2;
+          const wob=Math.sin(this.frameCount*0.05+tx+ty)*3;
+          ctx.beginPath();
+          ctx.moveTo(x+12,y+TILE/2+wob);
+          ctx.quadraticCurveTo(x+TILE/2,y+TILE/2-6+wob,x+TILE-12,y+TILE/2+wob);
+          ctx.stroke();
+        }
+      }
     }
 
     // Arena border
     ctx.strokeStyle='#4a8620'; ctx.lineWidth=10;
     ctx.strokeRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
 
-    // Obstacles
-    for (const o of OBSTACLES) {
-      if (o.type==='bush') {
-        ctx.fillStyle='#3a8c2a'; ctx.fillRect(o.x,o.y,o.w,o.h);
-        ctx.strokeStyle='#2d7020'; ctx.lineWidth=2; ctx.strokeRect(o.x,o.y,o.w,o.h);
-        ctx.fillStyle='#4aaa35';
-        for(let i=0;i<8;i++) {
-          ctx.beginPath();
-          ctx.arc(o.x+rand(o.w*0.1,o.w*0.9), o.y+rand(o.h*0.1,o.h*0.9), 4, 0, TAU);
-          ctx.fill();
-        }
-      } else {
-        ctx.fillStyle='#8b7355'; ctx.fillRect(o.x,o.y,o.w,o.h);
-        ctx.strokeStyle='#6b5a3e'; ctx.lineWidth=3; ctx.strokeRect(o.x,o.y,o.w,o.h);
-        ctx.strokeStyle='#7a6548'; ctx.lineWidth=2;
-        ctx.beginPath();
-        ctx.moveTo(o.x+5,o.y+5); ctx.lineTo(o.x+o.w-5,o.y+o.h-5);
-        ctx.moveTo(o.x+o.w-5,o.y+5); ctx.lineTo(o.x+5,o.y+o.h-5);
-        ctx.stroke();
-      }
-    }
+    // Poison cloud
+    this.poison.render(ctx);
 
     // Touch aim indicator (drawn under entities)
     this.renderTouchAim(ctx);
 
-    for (const b of this.bears)    b.render(ctx,0,0);
+    for (const c of this.cubes)     c.render(ctx);
+    for (const b of this.bears)     b.render(ctx,0,0);
     for (const p of this.particles) p.render(ctx,0,0);
-    for (const b of this.bullets)  b.render(ctx,0,0);
+    for (const b of this.bullets)   b.render(ctx,0,0);
+    // Bush stealth: hidden enemies aren't drawn (dead player = spectator sees all)
+    const spectator=!this.player||!this.player.alive;
     for (const b of this.brawlers) {
-      b.render(ctx,0,0);
+      if (!b.alive) continue;
+      if (!b.isPlayer&&!spectator&&!canSee(this.player,b)) continue;
+      const alpha=b.inBush?(b.isPlayer?0.55:0.75):1;
+      b.render(ctx,0,0,alpha);
       if (b.isPlayer&&b.alive) {
         ctx.save();
         ctx.fillStyle='#00ffff'; ctx.font='bold 11px Arial';
@@ -1120,6 +1689,17 @@ class Game {
       }
     }
     ctx.restore();
+
+    // Poison shrink warning banner
+    if (this.poison.warnTimer>0&&this.state===GameState.PLAYING) {
+      ctx.save();
+      ctx.fillStyle='rgba(40,90,30,0.85)';
+      ctx.beginPath(); ctx.roundRect(w/2-130,46,260,28,8); ctx.fill();
+      ctx.fillStyle='#aaffaa'; ctx.font='bold 15px Arial';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('☠ Ядовитое облако сужается!',w/2,60);
+      ctx.restore();
+    }
 
     this.renderHUD(ctx,w,h);
   }
@@ -1167,14 +1747,45 @@ class Game {
     ctx.beginPath(); ctx.roundRect(mmX,mmY,mmW,mmH,5); ctx.fill();
     ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1; ctx.stroke();
     ctx.strokeStyle='rgba(126,200,80,0.5)'; ctx.strokeRect(mmX+2,mmY+2,mmW-4,mmH-4);
-    ctx.fillStyle='rgba(100,100,100,0.6)';
-    for (const o of OBSTACLES) {
-      ctx.fillRect(
-        mmX+(o.x/ARENA_WIDTH)*(mmW-4)+2, mmY+(o.y/ARENA_HEIGHT)*(mmH-4)+2,
-        Math.max((o.w/ARENA_WIDTH)*(mmW-4),2), Math.max((o.h/ARENA_HEIGHT)*(mmH-4),2));
+    // Tile layer cached offscreen, rebuilt when boxes break
+    if (!this.mmCanvas||this.mmVersion!==tileMap.version) {
+      this.mmCanvas=document.createElement('canvas');
+      this.mmCanvas.width=mmW-4; this.mmCanvas.height=mmH-4;
+      const mc=this.mmCanvas.getContext('2d');
+      const tw=(mmW-4)/MAP_COLS, th=(mmH-4)/MAP_ROWS;
+      const TILE_COLORS={
+        [T_WALL]:'rgba(150,150,165,0.85)',
+        [T_BOX]:'rgba(139,115,85,0.85)',
+        [T_CRATE]:'rgba(187,68,255,0.85)',
+        [T_BUSH]:'rgba(58,140,42,0.7)',
+        [T_WATER]:'rgba(61,159,214,0.7)',
+      };
+      for (let ty=0;ty<MAP_ROWS;ty++)
+        for (let tx=0;tx<MAP_COLS;tx++) {
+          const c=TILE_COLORS[tileMap.tileAt(tx,ty)];
+          if (!c) continue;
+          mc.fillStyle=c;
+          mc.fillRect(tx*tw,ty*th,Math.max(tw,1.5),Math.max(th,1.5));
+        }
+      this.mmVersion=tileMap.version;
     }
+    ctx.drawImage(this.mmCanvas,mmX+2,mmY+2);
+    // Poison zone frame
+    const pb=this.poison.bounds();
+    ctx.strokeStyle='rgba(120,255,80,0.8)'; ctx.lineWidth=1;
+    ctx.strokeRect(
+      mmX+(pb.x0/ARENA_WIDTH)*(mmW-4)+2, mmY+(pb.y0/ARENA_HEIGHT)*(mmH-4)+2,
+      ((pb.x1-pb.x0)/ARENA_WIDTH)*(mmW-4), ((pb.y1-pb.y0)/ARENA_HEIGHT)*(mmH-4));
+    // Cubes
+    ctx.fillStyle='#bb44ff';
+    for (const c of this.cubes) {
+      ctx.fillRect(mmX+(c.x/ARENA_WIDTH)*(mmW-4)+1, mmY+(c.y/ARENA_HEIGHT)*(mmH-4)+1, 3, 3);
+    }
+    // Brawlers (hidden bush enemies don't show)
+    const mmSpectator=!p.alive;
     for (const b of this.brawlers) {
       if (!b.alive) continue;
+      if (!b.isPlayer&&!mmSpectator&&!canSee(p,b)) continue;
       ctx.fillStyle=b.isPlayer?'#00ffff':'#ff4444';
       ctx.beginPath();
       ctx.arc(mmX+(b.x/ARENA_WIDTH)*(mmW-4)+2, mmY+(b.y/ARENA_HEIGHT)*(mmH-4)+2,
@@ -1203,13 +1814,13 @@ class Game {
     ctx.font='bold 20px Arial'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(tim,w/2,23); ctx.restore();
 
-    // Kills
+    // Alive count + player cubes
     ctx.save();
     ctx.fillStyle='rgba(0,0,0,0.65)';
     ctx.beginPath(); ctx.roundRect(w-112,8,102,30,6); ctx.fill();
-    ctx.fillStyle='#ffdd00'; ctx.font='bold 16px Arial';
+    ctx.fillStyle='#ffdd00'; ctx.font='bold 15px Arial';
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(`☠ Kills: ${p.kills}`,w-61,23); ctx.restore();
+    ctx.fillText(`👥${this.aliveCount}  🧊${p.cubes}  ☠${p.kills}`,w-61,23); ctx.restore();
 
     // Bottom HUD (compact on touch so joysticks stay clear)
     const hudW=IS_TOUCH?240:310;
@@ -1265,20 +1876,28 @@ class Game {
       ctx.fillText(supR>=1?'⚡ SUPER READY!':'SUPER',supX+supW/2,amY);
     }
 
-    // Leaderboard
+    // Leaderboard: alive first (with cubes), then eliminated by placement
     const lbX=w-112,lbY=46;
     ctx.fillStyle='rgba(0,0,0,0.55)';
-    ctx.beginPath(); ctx.roundRect(lbX,lbY,102,92,6); ctx.fill();
+    ctx.beginPath(); ctx.roundRect(lbX,lbY,102,20+TOTAL_PLAYERS*15,6); ctx.fill();
     ctx.fillStyle='#fff'; ctx.font='bold 11px Arial'; ctx.textAlign='center';
-    ctx.fillText('LEADERBOARD',lbX+51,lbY+14);
-    const sorted=[...this.brawlers].sort((a,b)=>b.kills-a.kills);
+    ctx.fillText('SHOWDOWN',lbX+51,lbY+13);
+    const sorted=[...this.brawlers].sort((a,b)=>
+      (a.placement??0)-(b.placement??0) || b.cubes-a.cubes || b.kills-a.kills);
     sorted.forEach((b,i)=>{
-      const ry=lbY+30+i*17;
-      ctx.fillStyle=b.isPlayer?'#00ffff':'#ccc';
+      const ry=lbY+28+i*15;
       ctx.font='10px Arial'; ctx.textAlign='left';
-      ctx.fillText(`${i+1}. ${b.config.name}`,lbX+8,ry);
-      ctx.textAlign='right';
-      ctx.fillText(`${b.kills}`,lbX+92,ry);
+      if (b.alive) {
+        ctx.fillStyle=b.isPlayer?'#00ffff':'#eee';
+        ctx.fillText(`${b.config.name}`,lbX+8,ry);
+        ctx.textAlign='right';
+        ctx.fillText(`🧊${b.cubes}`,lbX+94,ry);
+      } else {
+        ctx.fillStyle=b.isPlayer?'rgba(0,255,255,0.45)':'#777';
+        ctx.fillText(`✖ ${b.config.name}`,lbX+8,ry);
+        ctx.textAlign='right';
+        ctx.fillText(`#${b.placement}`,lbX+94,ry);
+      }
     });
 
     if (IS_TOUCH) {
@@ -1389,21 +2008,22 @@ class Game {
   }
 
   renderGameOver(ctx,w,h) {
-    ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(0,0,w,h);
-    ctx.fillStyle='#ffdd00'; ctx.font='bold 44px Arial';
+    ctx.fillStyle='rgba(0,0,0,0.78)'; ctx.fillRect(0,0,w,h);
+    const place=this.player?this.player.placement:null;
+    const won=place===1;
+    ctx.fillStyle=won?'#ffdd00':'#ff8866';
+    ctx.font='bold 40px Arial';
     ctx.textAlign='center'; ctx.textBaseline='top';
-    ctx.shadowColor='#ff8800'; ctx.shadowBlur=20;
-    ctx.fillText('МАТЧ ОКОНЧЕН!',w/2,h/2-130);
+    ctx.shadowColor=won?'#ff8800':'#aa2200'; ctx.shadowBlur=20;
+    ctx.fillText(won?'🏆 ПОБЕДА!':`ВЫ ВЫБЫЛИ — ${place} МЕСТО`,w/2,h/2-200);
     ctx.shadowBlur=0;
-    ctx.fillStyle='#fff'; ctx.font='bold 20px Arial';
-    ctx.fillText('Итоговый счёт',w/2,h/2-72);
-    const sorted=[...this.brawlers].sort((a,b)=>b.kills-a.kills);
-    const medals=['🥇','🥈','🥉','4️⃣'];
+    const sorted=[...this.brawlers].sort((a,b)=>(a.placement||99)-(b.placement||99));
     sorted.forEach((b,i)=>{
-      const ry=h/2-32+i*30;
-      ctx.fillStyle=b.isPlayer?'#00ffff':['#ffd700','#c0c0c0','#cd7f32','#888'][i]||'#888';
-      ctx.font='bold 16px Arial'; ctx.textAlign='center';
-      ctx.fillText(`${medals[i]} ${b.config.name}${b.isPlayer?' (ВЫ)':''} — ${b.kills} убийств`,w/2,ry);
+      const ry=h/2-138+i*26;
+      const medal=['🥇','🥈','🥉'][i]||`${b.placement}.`;
+      ctx.fillStyle=b.isPlayer?'#00ffff':(['#ffd700','#c0c0c0','#cd7f32'][i]||'#aaa');
+      ctx.font='bold 15px Arial'; ctx.textAlign='center';
+      ctx.fillText(`${medal} ${b.config.name}${b.isPlayer?' (ВЫ)':''} — 🧊${b.cubes}  ☠${b.kills}`,w/2,ry);
     });
     const bx=w/2-95, by=h/2+95, bw=190, bh=50;
     const bg=ctx.createLinearGradient(bx,by,bx,by+bh);
@@ -1454,7 +2074,7 @@ function darken(hex, f) {
   return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`;
 }
 
-window.addEventListener('load', () => { new Game(); });
+window.addEventListener('load', () => { game = new Game(); });
 </script>
 </body>
 </html>
