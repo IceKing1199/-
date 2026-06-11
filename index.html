@@ -2074,7 +2074,11 @@ function darken(hex, f) {
   return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`;
 }
 
-window.addEventListener('load', () => { game = new Game(); });
+// Boot immediately if the document is already loaded (htmlpreview and
+// similar loaders inject the page after the load event has fired).
+function bootGame() { if (!game) game = new Game(); }
+if (document.readyState === 'complete' || document.readyState === 'interactive') bootGame();
+else window.addEventListener('load', bootGame);
 </script>
 </body>
 </html>
