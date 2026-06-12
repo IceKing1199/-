@@ -111,9 +111,36 @@ const BRAWLER_CONFIGS = {
     reload: 45, attackCooldown: 15, bulletSpeed: 14, bulletCount: 1, spread: 0,
     bulletRadius: 10,
     radius: 16, color: '#6c5ce7', symbol: 'E',
-    lifesteal: 0.3, // heals for 30% of damage dealt with punches
+    lifesteal: 0.3,
     superDamage: 0, superChargeRate: 0.12,
     jumpRange: 240, jumpDuration: 36
+  },
+  spike: {
+    name: 'Spike', hp: 3200, speed: 2.2, damage: 240, range: 280,
+    reload: 90, attackCooldown: 25, bulletSpeed: 6, bulletCount: 1, spread: 0,
+    bulletRadius: 8,
+    radius: 17, color: '#4eb54e', symbol: 'Sp',
+    spikeExplode: true, spikeDamage: 240, spikeCount: 6,
+    superDamage: 0, superChargeRate: 0.11,
+    superSpikeCount: 8, superSlowR: 90, superSlowDur: 180
+  },
+  crow: {
+    name: 'Crow', hp: 2800, speed: 2.65, damage: 160, range: 340,
+    reload: 85, attackCooldown: 20, bulletSpeed: 9, bulletCount: 3, spread: 0.22,
+    bulletRadius: 5,
+    radius: 16, color: '#2d3436', symbol: 'Cr',
+    poisonDps: 80, poisonDuration: 180,
+    superDamage: 0, superChargeRate: 0.09,
+    jumpRange: 200, jumpDuration: 28
+  },
+  mortis: {
+    name: 'Mortis', hp: 3600, speed: 2.1, damage: 700, range: 140,
+    reload: 55, attackCooldown: 18, bulletSpeed: 15, bulletCount: 1, spread: 0,
+    bulletRadius: 12,
+    radius: 18, color: '#6d4c99', symbol: 'Mo',
+    dashOnShoot: 65,
+    superDamage: 0, superChargeRate: 0.13,
+    batCount: 2, batDamage: 360, batSpeed: 2.8, batRadius: 14, batDuration: 600
   }
 };
 
@@ -300,8 +327,17 @@ const BRAWLER_ART = {
   edgar:  { skin:'#ffd9b3', skinDark:'#e8b88a',
             hair:'#23222b', hoodie:'#454253', hoodieDark:'#33303f',
             scarf:'#f2f2f7', accent:'#8e7cf0' },
+  spike:  { body:'#4eb54e', bodyDark:'#357a2e', spot:'#2e6624',
+            skin:'#ffd9b3', eyeWhite:'#fff' },
+  crow:   { cloak:'#1e2226', cloakDark:'#0f1114', mask:'#2d3436',
+            beak:'#e17055', dagger:'#b2bec3', dagDark:'#636e72',
+            skin:'#ffd9b3' },
+  mortis: { coat:'#6d4c99', coatDark:'#4a3370', skin:'#e8d0f0', skinDark:'#c0a0d8',
+            shovel:'#888fa0', shovelDark:'#555a66', wood:'#7a5a3a',
+            bat:'#2d3436' },
   bear:   { fur:'#8b5a2b', furDark:'#6e4520', muzzle:'#d8a05f',
-            nose:'#2e1d10', earInner:'#c98a55' }
+            nose:'#2e1d10', earInner:'#c98a55' },
+  bat:    { fur:'#2d3436', furDark:'#1a1f22', memb:'#4a3a5e', eye:'#e74c3c' }
 };
 // Damage flash: precomputed red-tinted copies of each palette
 const FLASH_ART = {};
@@ -543,7 +579,104 @@ function artEdgar(ctx, R, angle, anim, pal) {
   ctx.closePath(); ctx.fill();
 }
 
-const ART_FNS = { shelly:artShelly, colt:artColt, bull:artBull, nita:artNita, edgar:artEdgar };
+function artSpike(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,pal.bodyDark);
+  // round cactus body
+  ctx.fillStyle=pal.body;
+  ctx.beginPath(); ctx.arc(0,R*0.18,R*0.62,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  // dark spots
+  ctx.fillStyle=pal.spot;
+  dot(ctx,-R*0.26,R*0.06,R*0.12); dot(ctx,R*0.24,R*0.28,R*0.1); dot(ctx,0,R*0.42,R*0.09);
+  // arms / branches
+  ctx.fillStyle=pal.body;
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1;
+  capsule(ctx,-R*0.55,R*0.1,-R*0.8,-R*0.1,R*0.12); ctx.fill(); ctx.stroke();
+  capsule(ctx, R*0.55,R*0.1, R*0.78,-R*0.08,R*0.12); ctx.fill(); ctx.stroke();
+  // 8 radial spines
+  ctx.strokeStyle=pal.bodyDark; ctx.lineWidth=2.5; ctx.lineCap='round';
+  for (let i=0;i<8;i++) {
+    const a=i*TAU/8, d1=R*0.6, d2=R*0.86;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a)*d1,R*0.18+Math.sin(a)*d1);
+    ctx.lineTo(Math.cos(a)*d2,R*0.18+Math.sin(a)*d2); ctx.stroke();
+  }
+  // big sad eyes
+  artEyes(ctx,R,angle,{eyeY:0.06,eyeR:0.16});
+}
+
+function artCrow(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,pal.cloak);
+  // cloak body
+  ctx.fillStyle=pal.cloak;
+  ctx.beginPath(); ctx.ellipse(0,R*0.32,R*0.56,R*0.5,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  // three daggers in gun-space
+  inGunSpace(ctx,R,angle,anim.recoil,()=>{
+    for (const off of [-R*0.2, 0, R*0.2]) {
+      ctx.save(); ctx.translate(0,off);
+      ctx.fillStyle=pal.dagDark; capsule(ctx,R*0.2,0,R*0.85,0,R*0.06); ctx.fill();
+      ctx.fillStyle=pal.dagger; capsule(ctx,R*0.22,0,R*0.7,0,R*0.05); ctx.fill();
+      // blade tip
+      ctx.fillStyle='#dfe6e9';
+      ctx.beginPath(); ctx.moveTo(R*0.85,0); ctx.lineTo(R*1.1,R*0.04); ctx.lineTo(R*1.1,-R*0.04); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  });
+  // head with bird mask
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.32,R*0.54);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.32,R*0.54,0,TAU); ctx.stroke();
+  artEyes(ctx,R,angle,{eyeY:0.36,eyeR:0.13});
+  // pointed beak
+  ctx.fillStyle=pal.beak;
+  ctx.beginPath();
+  ctx.moveTo(R*0.3,-R*0.36); ctx.lineTo(R*0.8,-R*0.24); ctx.lineTo(R*0.28,-R*0.16);
+  ctx.closePath(); ctx.fill();
+  // dark hood/hair
+  ctx.fillStyle=pal.cloak;
+  ctx.beginPath(); ctx.arc(0,-R*0.35,R*0.56,Math.PI*0.9,Math.PI*2.1); ctx.closePath(); ctx.fill();
+}
+
+function artMortis(ctx, R, angle, anim, pal) {
+  artLegs(ctx,R,anim,pal.coatDark);
+  // long coat body
+  ctx.fillStyle=pal.coat;
+  ctx.beginPath(); ctx.ellipse(0,R*0.3,R*0.58,R*0.52,0,0,TAU); ctx.fill();
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5; ctx.stroke();
+  // coat lapels
+  ctx.fillStyle=pal.coatDark;
+  ctx.fillRect(-R*0.54,R*0.08,R*0.2,R*0.38);
+  ctx.fillRect( R*0.34,R*0.08,R*0.2,R*0.38);
+  // shovel in gun-space
+  inGunSpace(ctx,R,angle,anim.recoil,()=>{
+    ctx.fillStyle=pal.wood; capsule(ctx,R*0.2,0,R*0.9,0,R*0.08); ctx.fill();
+    ctx.fillStyle=pal.shovel;
+    ctx.beginPath();
+    ctx.moveTo(R*0.9,-R*0.22); ctx.lineTo(R*1.35,-R*0.22);
+    ctx.lineTo(R*1.35, R*0.22); ctx.lineTo(R*0.9, R*0.22); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle=ART_OUT; ctx.lineWidth=1; ctx.stroke();
+  });
+  // pale head
+  ctx.fillStyle=pal.skin; dot(ctx,0,-R*0.32,R*0.56);
+  ctx.strokeStyle=ART_OUT; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.arc(0,-R*0.32,R*0.56,0,TAU); ctx.stroke();
+  artEyes(ctx,R,angle,{eyeR:0.12});
+  // slicked-back dark hair
+  ctx.fillStyle=pal.coatDark;
+  ctx.beginPath(); ctx.arc(0,-R*0.36,R*0.57,Math.PI,Math.PI*2.04); ctx.closePath(); ctx.fill();
+  // tiny bat sitting on shoulder
+  ctx.save(); ctx.translate(-R*0.5,-R*0.08);
+  ctx.fillStyle=BRAWLER_ART.bat.fur;
+  ctx.beginPath(); ctx.ellipse(0,0,R*0.16,R*0.12,0,0,TAU); ctx.fill();
+  ctx.fillStyle=BRAWLER_ART.bat.memb;
+  ctx.beginPath();
+  ctx.moveTo(-R*0.08,0); ctx.quadraticCurveTo(-R*0.28,-R*0.22,-R*0.26,-R*0.04); ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo( R*0.08,0); ctx.quadraticCurveTo( R*0.28,-R*0.22, R*0.26,-R*0.04); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+const ART_FNS = { shelly:artShelly, colt:artColt, bull:artBull, nita:artNita, edgar:artEdgar, spike:artSpike, crow:artCrow, mortis:artMortis };
 
 // anim = { t, walk, moving (0..1), recoil (0..1), spawn (1→0), flash (bool) }
 function drawBrawlerArt(ctx, type, x, y, scale, angle, anim) {
@@ -709,6 +842,8 @@ class Bullet {
     this.radius = config.bulletRadius || 4;
     this.color = config.color;
     this.active = true;
+    this.isCactus = !!opts.isCactus;
+    this.poisonPayload = opts.poisonPayload || null; // {dps, duration} applied on hit
     if (config.spread > 0 && !this.isSuper)
       this.angle += rand(-config.spread/6, config.spread/6);
   }
@@ -739,9 +874,23 @@ class Bullet {
     ctx.fillStyle = this.isSuper ? '#fff' : this.color;
     ctx.shadowColor = this.color;
     ctx.shadowBlur  = this.isSuper ? 12 : 6;
-    ctx.beginPath();
-    ctx.arc(sx, sy, this.isSuper?this.radius+1:this.radius, 0, TAU);
-    ctx.fill();
+    if (this.isCactus) {
+      // draw as spiky ball
+      ctx.fillStyle='#4eb54e';
+      ctx.beginPath(); ctx.arc(sx,sy,this.radius+1,0,TAU); ctx.fill();
+      ctx.strokeStyle='#357a2e'; ctx.lineWidth=2;
+      for (let i=0;i<6;i++) {
+        const a=i*TAU/6;
+        ctx.beginPath();
+        ctx.moveTo(sx+Math.cos(a)*this.radius,sy+Math.sin(a)*this.radius);
+        ctx.lineTo(sx+Math.cos(a)*(this.radius+4),sy+Math.sin(a)*(this.radius+4));
+        ctx.stroke();
+      }
+    } else {
+      ctx.beginPath();
+      ctx.arc(sx, sy, this.isSuper?this.radius+1:this.radius, 0, TAU);
+      ctx.fill();
+    }
     ctx.strokeStyle = this.color;
     ctx.lineWidth = 2;
     ctx.globalAlpha = 0.5;
@@ -838,6 +987,82 @@ class Bear {
   }
 }
 
+// ── BAT (Mortis's super) ─────────────────────────────────────
+class Bat {
+  constructor(x, y, ownerId, damageMult=1) {
+    this.x=x; this.y=y;
+    this.ownerId=ownerId;
+    const cfg=BRAWLER_CONFIGS.mortis;
+    this.damage=cfg.batDamage*damageMult;
+    this.speed=cfg.batSpeed; this.radius=cfg.batRadius;
+    this.lifeTimer=cfg.batDuration; this.active=true;
+    this.angle=rand(0,TAU);
+    this.walkPhase=0;
+  }
+  update(brawlers) {
+    if (!this.active) return;
+    if (--this.lifeTimer<=0) { this.active=false; return; }
+    // Chase nearest alive enemy (ignore walls — bats fly)
+    let nearest=null, nd=Infinity;
+    for (const b of brawlers) {
+      if (b.id===this.ownerId||!b.alive) continue;
+      const d=dist(this.x,this.y,b.x,b.y);
+      if (d<nd) { nd=d; nearest=b; }
+    }
+    if (nearest) {
+      this.angle=Math.atan2(nearest.y-this.y, nearest.x-this.x);
+      this.x+=Math.cos(this.angle)*this.speed;
+      this.y+=Math.sin(this.angle)*this.speed;
+    }
+    this.walkPhase+=this.speed*0.3;
+    // Contact damage
+    if (nearest && nd < this.radius+nearest.radius+4) {
+      const died=nearest.takeDamage(this.damage, this.ownerId);
+      if (game) {
+        game.addPopup(nearest.x, nearest.y-nearest.radius-16, String(Math.round(this.damage)), '#ffffff');
+        game.spawnParticles(this.x, this.y, '#6d4c99', 6);
+        game.sound.play('hit');
+        // Mortis heals on bat hit
+        const mortis=game.brawlers.find(b=>b.id===this.ownerId&&b.alive);
+        if (mortis&&mortis.type==='mortis') {
+          const heal=this.damage*0.5;
+          mortis.hp=Math.min(mortis.maxHp,mortis.hp+heal);
+          game.addPopup(mortis.x,mortis.y-mortis.radius-16,'+'+Math.round(heal),'#7dff8a');
+        }
+        if (died) game.onBrawlerDeath(nearest, this.ownerId);
+      }
+      this.active=false;
+    }
+  }
+  render(ctx, cx, cy) {
+    if (!this.active) return;
+    const pal=BRAWLER_ART.bat;
+    const sx=this.x-cx, sy=this.y-cy;
+    const R=this.radius;
+    const wing=Math.sin(this.walkPhase)*0.5;
+    ctx.save();
+    ctx.translate(sx,sy); ctx.rotate(this.angle);
+    // wings
+    ctx.fillStyle=pal.memb; ctx.globalAlpha=0.85;
+    ctx.beginPath();
+    ctx.moveTo(-R*0.3,-R*0.1);
+    ctx.quadraticCurveTo(-R*1.2,-R*(0.7+wing),-R*1.0,-R*0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-R*0.3, R*0.1);
+    ctx.quadraticCurveTo(-R*1.2, R*(0.7+wing),-R*1.0, R*0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.globalAlpha=1;
+    // body
+    ctx.fillStyle=pal.fur;
+    ctx.beginPath(); ctx.ellipse(0,0,R*0.6,R*0.45,0,0,TAU); ctx.fill();
+    // eyes
+    ctx.fillStyle=pal.eye;
+    dot(ctx,R*0.28,-R*0.15,R*0.13); dot(ctx,R*0.28,R*0.15,R*0.13);
+    ctx.restore();
+  }
+}
+
 // ── BRAWLER ───────────────────────────────────────────────────
 class Brawler {
   constructor(id, type, x, y, isPlayer=false) {
@@ -857,12 +1082,20 @@ class Brawler {
     this.framesSinceDamage=9999;
     this.isDashing=false; this.dashTimer=0; this.dashAngle=0;
     this.dashHitIds=null;
-    // Edgar's jump + post-landing speed boost
+    // Edgar/Crow jump
     this.isJumping=false; this.jumpTimer=0; this.jumpDur=1;
     this.jumpFrom=null; this.jumpTo=null;
+    this.jumpLandBullets=null; // {count, damage, poison} – shot on landing
     this.speedBoostTimer=0;
     // Gadget (one per brawler, 15s cooldown) + Nita's shield
     this.gadgetCd=0; this.shieldTimer=0;
+    // Crow poison
+    this.poisonTimer=0; this.poisonDps=0; this.poisonAttackerId=null;
+    this.poisonSlowTimer=0; // crow gadget
+    // Mortis silence
+    this.silenceTimer=0;
+    // Hypercharge
+    this.hyperCharge=0; this.maxHyperCharge=100;
     this.burst=null;          // Colt burst fire: {left, angle, timer, isSuper, damage, range}
     this.pendingBullets=[];   // drained by Game each frame
     // animation state
@@ -880,6 +1113,17 @@ class Brawler {
     if (this.gadgetCd>0)      this.gadgetCd--;
     if (this.shieldTimer>0)   this.shieldTimer--;
     if (this.speedBoostTimer>0) this.speedBoostTimer--;
+    if (this.silenceTimer>0)  this.silenceTimer--;
+    if (this.poisonSlowTimer>0) this.poisonSlowTimer--;
+    // Crow poison ticks every 20 frames
+    if (this.poisonTimer>0) {
+      this.poisonTimer--;
+      if (this.poisonTimer%20===0 && this.alive) {
+        const dmg=this.poisonDps*20/60;
+        this.takeDamage(dmg, this.poisonAttackerId);
+        if (game) game.addPopup(this.x,this.y-this.radius-16,'☠'+Math.round(dmg),'#a29bfe');
+      }
+    }
     this.framesSinceDamage++;
     if (this.ammo<this.maxAmmo) {
       this.reloadTimer--;
@@ -931,13 +1175,35 @@ class Brawler {
         game.fx.push(new RingFX(this.x,this.y,'#8e7cf0',45));
         game.spawnParticles(this.x,this.y,this.color,12);
         if (this.isPlayer) game.addShake(3);
+        if (this.jumpLandBullets) {
+          const { count, damage, range, speed, radius, poisonPayload } = this.jumpLandBullets;
+          for (let i=0;i<count;i++) {
+            const ang=i*(Math.PI*2/count);
+            const b=new Bullet(
+              this.x+Math.cos(ang)*(this.radius+4),
+              this.y+Math.sin(ang)*(this.radius+4),
+              ang, this.config, this.id,
+              { damage, range:range||150, bulletSpeed:speed||6, bulletRadius:radius||5 }
+            );
+            if (poisonPayload) {
+              b.poisonPayload={ dps:poisonPayload.dps||80, dur:poisonPayload.duration||poisonPayload.dur||180 };
+            }
+            game.bullets.push(b);
+          }
+          this.jumpLandBullets=null;
+        }
       }
     }
   }
   updateMovement() {
     if (this.moveX===0 && this.moveY===0) return;
     const ma=Math.atan2(this.moveY,this.moveX);
-    const sp=this.speed*(this.speedBoostTimer>0?1.3:1);
+    let slowMult=1;
+    if (game&&game.slowZones) for (const sz of game.slowZones) {
+      if (dist(this.x,this.y,sz.x,sz.y)<sz.r) { slowMult=0.5; break; }
+    }
+    if (this.poisonSlowTimer>0) slowMult=Math.min(slowMult,0.8);
+    const sp=this.speed*(this.speedBoostTimer>0?1.3:1)*slowMult;
     const nx=this.x+Math.cos(ma)*sp;
     const ny=this.y+Math.sin(ma)*sp;
     const cx=!tileMap.circleHitsSolid(nx,this.y,this.radius,tileMap.isSolidForMove);
@@ -967,17 +1233,19 @@ class Brawler {
     if (this.dashTimer<=0) this.isDashing=false;
   }
   shoot() {
-    if (this.ammo<=0||this.shootCooldown>0||!this.alive||this.burst) return [];
+    if (this.ammo<=0||this.shootCooldown>0||!this.alive||this.burst||this.silenceTimer>0) return [];
     this.ammo--; this.shootCooldown=this.config.attackCooldown;
     if (this.reloadTimer<=0) this.reloadTimer=this.config.reload;
     this.shootFlash=4; this.revealTimer=60;
-    const dmg=this.config.damage*this.damageMult;
+    const angryMult=(!this.isPlayer&&game&&game.matchEvent&&game.matchEvent.type==='angryBots')?1.3:1;
+    const dmg=this.config.damage*this.damageMult*angryMult;
     if (this.type==='colt') {
       this.burst={ left:this.config.bulletCount, angle:this.angle, timer:1,
                    isSuper:false, damage:dmg, range:this.config.range };
       return [];
     }
     const bullets=[];
+    const poisonPayload = this.config.poisonDps ? {dps:this.config.poisonDps, duration:this.config.poisonDuration} : null;
     if (this.config.spread>0) {
       const step=this.config.spread/(this.config.bulletCount-1);
       const start=this.angle-this.config.spread/2;
@@ -985,14 +1253,30 @@ class Brawler {
         bullets.push(new Bullet(
           this.x+Math.cos(this.angle)*(this.radius+5),
           this.y+Math.sin(this.angle)*(this.radius+5),
-          start+step*i, this.config, this.id, {damage:dmg}));
+          start+step*i, this.config, this.id, {damage:dmg, poisonPayload}));
     } else {
       bullets.push(new Bullet(
         this.x+Math.cos(this.angle)*(this.radius+5),
         this.y+Math.sin(this.angle)*(this.radius+5),
-        this.angle, this.config, this.id, {damage:dmg}));
+        this.angle, this.config, this.id,
+        {damage:dmg,
+         isCactus: !!this.config.spikeExplode,
+         poisonPayload}));
     }
+    // Mortis: dash forward after each swing
+    if (this.config.dashOnShoot) this.dashForward(this.config.dashOnShoot);
     return bullets;
+  }
+  dashForward(px) {
+    const steps=Math.ceil(px/8);
+    const step=px/steps;
+    for (let i=0;i<steps;i++) {
+      const nx=this.x+Math.cos(this.angle)*step;
+      const ny=this.y+Math.sin(this.angle)*step;
+      if (tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove)) break;
+      if (nx<this.radius||nx>ARENA_WIDTH-this.radius||ny<this.radius||ny>ARENA_HEIGHT-this.radius) break;
+      this.x=nx; this.y=ny;
+    }
   }
   useSuper() {
     if (this.superCharge<this.maxSuperCharge||!this.alive) return null;
@@ -1038,8 +1322,6 @@ class Brawler {
         break;
       }
       case 'edgar': {
-        // Leap toward the aim point; walk the landing spot back toward
-        // Edgar until it's clear of walls/water and inside the arena
         const cfg=this.config;
         let lx=this.x, ly=this.y;
         for (let d=cfg.jumpRange; d>=0; d-=15) {
@@ -1056,6 +1338,164 @@ class Brawler {
         this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
         break;
       }
+      case 'crow': {
+        const cfg=this.config;
+        let lx=this.x, ly=this.y;
+        for (let d=cfg.jumpRange; d>=0; d-=15) {
+          const px=this.x+Math.cos(this.angle)*d;
+          const py=this.y+Math.sin(this.angle)*d;
+          if (px<this.radius||px>ARENA_WIDTH-this.radius||
+              py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
+          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) {
+            lx=px; ly=py; break;
+          }
+        }
+        this.isJumping=true;
+        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
+        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        // on landing: 6 poison daggers in a ring
+        this.jumpLandBullets={count:6, damage:cfg.damage*this.damageMult,
+          poisonPayload:{dps:cfg.poisonDps, duration:cfg.poisonDuration}};
+        break;
+      }
+      case 'spike': {
+        const cfg=this.config;
+        // 8 large spikes in a ring + create a slow zone
+        for (let i=0;i<cfg.superSpikeCount;i++) {
+          const a=i*TAU/cfg.superSpikeCount;
+          result.bullets.push(new Bullet(
+            this.x+Math.cos(a)*(this.radius+5),
+            this.y+Math.sin(a)*(this.radius+5),
+            a, this.config, this.id,
+            { isSuper:true, damage:cfg.spikeDamage*this.damageMult, range:200 }));
+        }
+        result.slowZone={x:this.x, y:this.y, r:cfg.superSlowR, timer:cfg.superSlowDur};
+        break;
+      }
+      case 'mortis': {
+        result.bats=[];
+        const cfg=this.config;
+        for (let i=0;i<cfg.batCount;i++) {
+          result.bats.push(new Bat(this.x+rand(-30,30), this.y+rand(-30,30), this.id, this.damageMult));
+        }
+        break;
+      }
+    }
+    return result;
+  }
+  useHyperSuper() {
+    if (this.hyperCharge<this.maxHyperCharge||!this.alive) return null;
+    this.hyperCharge=0;
+    this.superCharge=0; this.revealTimer=60;
+    const result={bullets:[], bear:null, bats:[], slowZone:null};
+    switch(this.type) {
+      case 'shelly': {
+        const dmg=this.config.superDamage*this.damageMult;
+        const step=this.config.superSpread/(this.config.superBullets-1);
+        const start=this.angle-this.config.superSpread/2;
+        for (let i=0;i<this.config.superBullets;i++)
+          result.bullets.push(new Bullet(
+            this.x+Math.cos(this.angle)*(this.radius+5),
+            this.y+Math.sin(this.angle)*(this.radius+5),
+            start+step*i, this.config, this.id,
+            { isSuper:true, damage:dmg, range:this.config.range*1.3, knockback:true }));
+        // Break 3×3 tiles of walls around the target
+        const tx=Math.floor((this.x+Math.cos(this.angle)*180)/TILE);
+        const ty=Math.floor((this.y+Math.sin(this.angle)*180)/TILE);
+        for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++) {
+          const idx=(ty+dy)*MAP_COLS+(tx+dx);
+          if (idx>=0&&idx<tileMap.grid.length&&tileMap.grid[idx]===T_WALL) {
+            tileMap.grid[idx]=T_EMPTY; tileMap.version++;
+          }
+        }
+        if (game) game.spawnExplosion(tx*TILE+TILE/2,ty*TILE+TILE/2,'#ffdd00');
+        break;
+      }
+      case 'colt':
+        this.burst={ left:24, angle:this.angle, timer:1,
+                     isSuper:true, damage:this.config.superDamage*this.damageMult,
+                     range:this.config.range*1.5 };
+        break;
+      case 'bull':
+        this.isDashing=true;
+        this.dashTimer=this.config.chargeDuration*1.5|0;
+        this.dashAngle=this.angle;
+        this.dashHitIds=new Set();
+        this.trail=[]; this.fireyTrail=true;
+        break;
+      case 'nita': {
+        const cfg=this.config;
+        for (let i=0;i<2;i++) {
+          let bx=this.x, by=this.y;
+          for (let d=40; d>=0; d-=10) {
+            const px=this.x+Math.cos(this.angle+i*0.6)*d;
+            const py=this.y+Math.sin(this.angle+i*0.6)*d;
+            if (!tileMap.circleHitsSolid(px,py,cfg.bearRadius,tileMap.isSolidForMove)) {
+              bx=px; by=py; break;
+            }
+          }
+          result.bear=new Bear(bx, by, this.id, this.damageMult);
+          if (game) game.bears.push(result.bear); // push directly, return only has .bear
+        }
+        result.bear=null; // both already pushed
+        break;
+      }
+      case 'edgar': {
+        const cfg=this.config;
+        let lx=this.x, ly=this.y;
+        for (let d=cfg.jumpRange; d>=0; d-=15) {
+          const px=this.x+Math.cos(this.angle)*d;
+          const py=this.y+Math.sin(this.angle)*d;
+          if (px<this.radius||px>ARENA_WIDTH-this.radius||py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
+          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) { lx=px; ly=py; break; }
+        }
+        this.isJumping=true;
+        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
+        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        // landing ring of 8 bullets
+        this.jumpLandBullets={count:8, damage:cfg.damage*this.damageMult, poisonPayload:null};
+        break;
+      }
+      case 'spike': {
+        const cfg=this.config;
+        for (let i=0;i<8;i++) {
+          const a=i*TAU/8;
+          result.bullets.push(new Bullet(
+            this.x+Math.cos(a)*(this.radius+5),
+            this.y+Math.sin(a)*(this.radius+5),
+            a, this.config, this.id,
+            { isSuper:true, damage:cfg.spikeDamage*this.damageMult, range:200 }));
+        }
+        result.slowZone={x:this.x, y:this.y, r:140, timer:180};
+        break;
+      }
+      case 'crow': {
+        const cfg=this.config;
+        let lx=this.x, ly=this.y;
+        for (let d=cfg.jumpRange; d>=0; d-=15) {
+          const px=this.x+Math.cos(this.angle)*d;
+          const py=this.y+Math.sin(this.angle)*d;
+          if (px<this.radius||px>ARENA_WIDTH-this.radius||py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
+          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) { lx=px; ly=py; break; }
+        }
+        this.isJumping=true;
+        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
+        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        this.jumpLandBullets={count:12, damage:cfg.damage*this.damageMult,
+          poisonPayload:{dps:cfg.poisonDps, duration:300}}; // longer hyper poison
+        break;
+      }
+      case 'mortis': {
+        result.bats=[];
+        const cfg=this.config;
+        for (let i=0;i<3;i++) {
+          result.bats.push(new Bat(this.x+rand(-30,30), this.y+rand(-30,30), this.id, this.damageMult));
+        }
+        const heal=Math.min(600, this.maxHp-this.hp);
+        this.hp+=heal;
+        if (game) game.addPopup(this.x,this.y-this.radius-16,'+'+Math.round(heal),'#7dff8a');
+        break;
+      }
     }
     return result;
   }
@@ -1068,7 +1508,10 @@ class Brawler {
     return false;
   }
   chargeSuper(dmg) {
-    this.superCharge=Math.min(this.maxSuperCharge, this.superCharge+dmg*this.config.superChargeRate);
+    const rate=this.config.superChargeRate*(game&&game.matchEvent&&game.matchEvent.type==='superMadness'?2:1);
+    this.superCharge=Math.min(this.maxSuperCharge, this.superCharge+dmg*rate);
+    if (this.hyperCharge<this.maxHyperCharge)
+      this.hyperCharge=Math.min(this.maxHyperCharge, this.hyperCharge+dmg*this.config.superChargeRate*0.4);
   }
   // One gadget per brawler, no charge limit, 15s cooldown
   useGadget() {
@@ -1104,6 +1547,30 @@ class Brawler {
         this.superCharge=Math.min(this.maxSuperCharge,this.superCharge+35);
         if (g) g.addPopup(this.x,this.y-this.radius-16,'+35% ⚡','#ffdd55');
         break;
+      case 'spike': { // surprise: burst 6 mini-spikes from self
+        const cfg=this.config;
+        for (let i=0;i<6;i++) {
+          const ang=i*(Math.PI*2/6);
+          if (g) g.bullets.push(new Bullet(
+            this.x+Math.cos(ang)*(this.radius+4),
+            this.y+Math.sin(ang)*(this.radius+4),
+            ang, cfg, this.id,
+            { damage:cfg.spikeDamage*this.damageMult, range:120, bulletSpeed:5, bulletRadius:6 }
+          ));
+        }
+        break;
+      }
+      case 'crow': // slow poison: all poisoned enemies get poisonSlow
+        if (g) for (const b of g.brawlers) {
+          if (b.id!==this.id&&b.alive&&b.poisonTimer>0) b.poisonSlowTimer=300;
+        }
+        break;
+      case 'mortis': { // silence: all enemies in 220px can't shoot
+        if (g) for (const b of g.brawlers) {
+          if (b.id!==this.id&&b.alive&&dist(this.x,this.y,b.x,b.y)<220) b.silenceTimer=90;
+        }
+        break;
+      }
     }
     this.gadgetCd=900;
     if (g) {
@@ -1151,6 +1618,16 @@ class Brawler {
       ctx.globalAlpha=0.35+0.15*Math.sin((game?game.frameCount:0)*0.3);
       ctx.strokeStyle='#7fdbff'; ctx.lineWidth=3;
       ctx.beginPath(); ctx.arc(sx,sy,this.radius+9,0,TAU); ctx.stroke();
+      ctx.restore();
+    }
+    // Hypercharge pulsing gold ring
+    if (this.hyperCharge>=this.maxHyperCharge) {
+      const pulse=0.55+0.45*Math.sin((game?game.frameCount:0)*0.22);
+      ctx.save();
+      ctx.globalAlpha=pulse;
+      ctx.strokeStyle='#ffd700'; ctx.lineWidth=3;
+      ctx.shadowColor='#ffd700'; ctx.shadowBlur=10;
+      ctx.beginPath(); ctx.arc(sx,sy,this.radius+14,0,TAU); ctx.stroke();
       ctx.restore();
     }
     // HP bar
@@ -1226,6 +1703,15 @@ class Brawler {
       ctx.fillStyle='#9a6fe0';
     }
     ctx.beginPath(); ctx.roundRect(ax0,sy2,Math.max(sw*Math.min(r,1),1.5),sh,2); ctx.fill();
+    // Hyper charge thin gold bar above super
+    if (this.hyperCharge>0) {
+      const sy3=sy2-4;
+      const hr=this.hyperCharge/this.maxHyperCharge;
+      ctx.fillStyle='rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.roundRect(ax0-0.5,sy3-0.5,sw+1,2.5,1.5); ctx.fill();
+      ctx.fillStyle=hr>=1?'#ffd700':'rgba(255,215,0,0.75)';
+      ctx.beginPath(); ctx.roundRect(ax0,sy3,Math.max(sw*hr,1.5),2,1); ctx.fill();
+    }
     ctx.restore();
   }
 }
@@ -1271,6 +1757,9 @@ class BotAI {
                        } break;
         case 'nita':   if (enemy&&ed<200&&me.hp<me.maxHp*0.7) me.useGadget(); break;
         case 'edgar':  if (enemy&&ed<300&&me.superCharge<me.maxSuperCharge*0.7) me.useGadget(); break;
+        case 'spike':  if (enemy&&ed<150) me.useGadget(); break;
+        case 'crow':   if (enemy&&enemy.poisonTimer>0&&ed<350) me.useGadget(); break;
+        case 'mortis': if (enemy&&ed<220) me.useGadget(); break;
       }
     }
 
@@ -1283,6 +1772,14 @@ class BotAI {
       const zb=pz.bounds();
       const a=Math.atan2((zb.y0+zb.y1)/2-me.y, (zb.x0+zb.x1)/2-me.x);
       me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
+    } else if (me.hp<0.35*me.maxHp && (!enemy||ed>300)) {
+      // 1b. Low HP and no nearby enemy: hide in nearest bush
+      const bush=this.findNearestTile(T_BUSH,4);
+      if (bush&&bush.d>30) {
+        this.state='seek-bush';
+        const a=Math.atan2(bush.y-me.y, bush.x-me.x);
+        me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
+      }
     } else if (me.hp<0.35*me.maxHp && enemy && ed<300) {
       // 2. Low HP under fire: panic super, then run for a bush
       this.state='retreat';
@@ -1345,6 +1842,9 @@ class BotAI {
       case 'shelly': ok = ed<me.config.range*0.8; break;
       case 'colt':   ok = ed<me.config.range*1.2; break;
       case 'edgar':  ok = ed>70 && ed<320; break;
+      case 'crow':   ok = ed<280; break;
+      case 'spike':  ok = ed<300; break;
+      case 'mortis': ok = ed<300; break;
     }
     if (!ok && me.hp<0.25*me.maxHp && ed<250) ok=true;
     if (ok) me.angle=angTo;
@@ -1362,7 +1862,17 @@ class BotAI {
     mx+=Math.cos(a+Math.PI/2)*strafe*0.6;
     my+=Math.sin(a+Math.PI/2)*strafe*0.6;
     me.moveX=mx; me.moveY=my;
-    if (ed<this.shootRange && me.ammo>0 && !me.burst && this.reactionTimer<=0) {
+    // Mortis: always advance, no strafe; crow: kite backward
+    if (me.type==='mortis') { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    else if (me.type==='crow') {
+      // kite: face enemy but step away slowly
+      const kite=Math.cos(a+Math.PI)*0.3;
+      me.moveX+=Math.cos(a+Math.PI)*0.3; me.moveY+=Math.sin(a+Math.PI)*0.3;
+    }
+    // Finisher: never retreat when enemy is nearly dead
+    const finisher=enemy.hp<500;
+    if (finisher) { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    if (ed<this.shootRange && me.ammo>0 && !me.burst && this.reactionTimer<=0 && canSee(me,enemy)) {
       this.reactionTimer=8+randInt(0,10);
       return 'shoot';
     }
@@ -1671,6 +2181,7 @@ class SoundManager {
       case 'go':         this.tone(523,0.12,'square',0.45); setTimeout(()=>this.tone(784,0.2,'square',0.45),110); break;
       case 'trophy':     this.tone(587,0.1,'sine',0.5); setTimeout(()=>this.tone(880,0.16,'sine',0.5),120); break;
       case 'gadget':     this.tone(520,0.08,'square',0.45); setTimeout(()=>this.tone(780,0.1,'square',0.45),70); break;
+      case 'event':      this.tone(440,0.12,'sine',0.5); setTimeout(()=>this.tone(554,0.12,'sine',0.5),100); setTimeout(()=>this.tone(659,0.18,'sine',0.5),200); break;
     }
   }
 }
@@ -1740,8 +2251,8 @@ class Game {
     this.matchTimerDisplay=MATCH_DURATION;
     this.frameCount=0;
 
-    this.brawlers=[]; this.bullets=[]; this.bears=[]; this.particles=[]; this.botAIs=[];
-    this.cubes=[];
+    this.brawlers=[]; this.bullets=[]; this.bears=[]; this.bats=[]; this.particles=[]; this.botAIs=[];
+    this.cubes=[]; this.slowZones=[];
     this.popups=[]; this.fx=[]; this.killFeed=[];
     this.shake={power:0,timer:0};
     this.countdown=0; this.goTimer=0;
@@ -1756,6 +2267,9 @@ class Game {
     this.gameOverDelay=0;
     this.mmCanvas=null; this.mmVersion=-1; // minimap tile cache
     this.player=null;
+    this.matchEvent=null; this.nextEventTimer=2700;
+    this.playerStats={damageDealt:0,damageReceived:0,shotsFired:0,shotsHit:0,timeAlive:0};
+    this.dayPhase=0; this.lastDayPhase=0; this.stars=[];
     this.camera={x:0,y:0};
     this.keys={};
     this.mouse={x:0,y:0,down:false};
@@ -1922,6 +2436,7 @@ class Game {
     const hadAmmoBurst=!!this.player.burst;
     const bs=this.player.shoot();
     if (bs.length) {
+      this.playerStats.shotsFired+=this.player.config.bulletCount||bs.length;
       this.bullets.push(...bs);
       this.sound.play('shoot');
       this.spawnParticles(
@@ -1930,6 +2445,7 @@ class Game {
         this.player.color, 6);
     } else if (!hadAmmoBurst&&this.player.burst) {
       // Colt: shot accepted, bullets stream out via burst
+      this.playerStats.shotsFired+=this.player.config.bulletCount||1;
       this.spawnParticles(
         this.player.x+Math.cos(this.player.angle)*this.player.radius,
         this.player.y+Math.sin(this.player.angle)*this.player.radius,
@@ -1940,8 +2456,8 @@ class Game {
   startMatch(type) {
     this.state=GameState.PLAYING;
     this.matchTimer=MATCH_DURATION; this.matchTimerDisplay=MATCH_DURATION;
-    this.brawlers=[]; this.bullets=[]; this.bears=[]; this.particles=[]; this.botAIs=[];
-    this.cubes=[];
+    this.brawlers=[]; this.bullets=[]; this.bears=[]; this.bats=[]; this.particles=[]; this.botAIs=[];
+    this.cubes=[]; this.slowZones=[];
     this.popups=[]; this.fx=[]; this.killFeed=[];
     this.shake={power:0,timer:0};
     this.countdown=180; this.goTimer=0; // 3-2-1 countdown before the brawl
@@ -1952,6 +2468,10 @@ class Game {
     this.frameCount=0;
     this.touchAimMode=null;
     this.gameOverDelay=0;
+    this.matchEvent=null; this.nextEventTimer=2700;
+    this.playerStats={damageDealt:0,damageReceived:0,shotsFired:0,shotsHit:0,timeAlive:0};
+    this.dayPhase=0; this.lastDayPhase=0;
+    this.stars=Array.from({length:30},()=>({x:rand(0,ARENA_WIDTH),y:rand(0,ARENA_HEIGHT),r:rand(0.3,1.2)}));
 
     // Shuffle the 8 map spawn points; player takes one, bots take the rest
     const spawns=[...tileMap.spawnPoints];
@@ -1960,7 +2480,7 @@ class Game {
     }
     this.player=new Brawler('player',type,spawns[0].x,spawns[0].y,true);
     this.brawlers.push(this.player);
-    const types=['shelly','colt','bull','nita','edgar'];
+    const types=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
     for (let i=1;i<TOTAL_PLAYERS;i++) {
       const sp=spawns[i%spawns.length];
       const bot=new Brawler(`bot_${i}`,types[i%types.length],sp.x,sp.y,false);
@@ -1987,6 +2507,8 @@ class Game {
     if (r) {
       if (r.bullets) this.bullets.push(...r.bullets);
       if (r.bear)    this.bears.push(r.bear);
+      if (r.bats)    this.bats.push(...r.bats);
+      if (r.slowZone) this.slowZones.push(r.slowZone);
       this.fx.push(new RingFX(this.player.x, this.player.y, '#ffdd00', 60));
       this.addShake(3);
       this.sound.play('super');
@@ -2181,8 +2703,10 @@ class Game {
       } else if (action==='super') {
         const r=ai.brawler.useSuper();
         if (r) {
-          if (r.bullets.length) this.bullets.push(...r.bullets);
+          if (r.bullets&&r.bullets.length) this.bullets.push(...r.bullets);
           if (r.bear)           this.bears.push(r.bear);
+          if (r.bats)           this.bats.push(...r.bats);
+          if (r.slowZone)       this.slowZones.push(r.slowZone);
           this.fx.push(new RingFX(ai.brawler.x, ai.brawler.y, '#ffdd00', 60));
           this.sound.play('super');
         }
@@ -2217,11 +2741,61 @@ class Game {
     }
     this.cubes=this.cubes.filter(c=>c.active);
 
+    // Day/Night
+    this.dayPhase=(this.frameCount%7200)/7200;
+    const newDP=this.dayPhase;
+    if (this.lastDayPhase<0.15&&newDP>=0.15)
+      this.addEventBanner('🌙 Наступает ночь','#334');
+    else if (this.lastDayPhase<0.85&&newDP>=0.85)
+      this.addEventBanner('☀️ Рассвет','#f9c74f');
+    this.lastDayPhase=newDP;
+
+    // Match events
+    if (this.countdown===0) {
+      if (--this.nextEventTimer<=0) {
+        this.nextEventTimer=1800+Math.floor(rand(0,600));
+        this.spawnMatchEvent();
+      }
+      if (this.matchEvent&&--this.matchEvent.timer<=0) this.matchEvent=null;
+      // healing rain
+      if (this.matchEvent&&this.matchEvent.type==='healingRain') {
+        for (const b of this.brawlers) {
+          if (b.alive) b.hp=Math.min(b.maxHp,b.hp+80/60);
+        }
+      }
+      // player stats: time alive
+      if (this.player&&this.player.alive) this.playerStats.timeAlive++;
+    }
+
     // Update projectiles & entities
     for (const b of this.bullets) b.update();
+    // Cactus explosion: spawn spikelets when a cactus bullet deactivates
+    const newBullets=[];
+    for (const b of this.bullets) {
+      if (!b.active&&b.isCactus) {
+        const cfg=BRAWLER_CONFIGS.spike;
+        for (let i=0;i<(cfg.spikeCount||6);i++) {
+          const ang=i*(Math.PI*2/(cfg.spikeCount||6));
+          const sb=new Bullet(
+            b.x+Math.cos(ang)*6, b.y+Math.sin(ang)*6,
+            ang, cfg, b.ownerId,
+            { damage:cfg.spikeDamage, range:100, bulletSpeed:5, bulletRadius:5 }
+          );
+          sb.isCactus=false;
+          newBullets.push(sb);
+        }
+      }
+    }
     this.bullets=this.bullets.filter(b=>b.active);
+    this.bullets.push(...newBullets);
     for (const b of this.bears) b.update(this.brawlers);
     this.bears=this.bears.filter(b=>b.active);
+    // Bat update
+    for (const bat of this.bats) bat.update(this.brawlers);
+    this.bats=this.bats.filter(b=>b.active);
+    // Slow zone update
+    for (const sz of this.slowZones) sz.timer--;
+    this.slowZones=this.slowZones.filter(sz=>sz.timer>0);
     for (const p of this.particles) p.update();
     this.particles=this.particles.filter(p=>p.active);
 
@@ -2245,9 +2819,15 @@ class Game {
           if (brawler.isPlayer) this.addShake(4);
           this.spawnParticles(bullet.x, bullet.y, brawler.color, 6);
           this.sound.play('hit');
+          if (bullet.poisonPayload) {
+            brawler.poisonTimer=bullet.poisonPayload.dur||bullet.poisonPayload.duration||180;
+            brawler.poisonDps=bullet.poisonPayload.dps||80;
+            brawler.poisonAttackerId=bullet.ownerId;
+          }
           const att=this.brawlers.find(b=>b.id===bullet.ownerId);
           if (att&&att.alive) {
             att.chargeSuper(dmg);
+            if (att===this.player) { this.playerStats.damageDealt+=dmg; this.playerStats.shotsHit++; }
             // Edgar's punches drain life from the target
             if (att.config.lifesteal&&!bullet.isSuper&&att.hp<att.maxHp) {
               const heal=dmg*att.config.lifesteal;
@@ -2255,6 +2835,7 @@ class Game {
               this.addPopup(att.x,att.y-att.radius-16,'+'+Math.round(heal),'#7dff8a');
             }
           }
+          if (brawler===this.player) this.playerStats.damageReceived+=dmg;
           if (bullet.knockback&&!died) this.applyKnockback(brawler, bullet.angle, 50);
           if (died) this.onBrawlerDeath(brawler, bullet.ownerId);
           if (consumed) break;
@@ -2333,6 +2914,19 @@ class Game {
     this.killFeed.unshift({k:killerName, v:victimName, timer:240});
     if (this.killFeed.length>4) this.killFeed.pop();
   }
+  addEventBanner(text, color) {
+    this.eventBanner={text, color, timer:180, maxTimer:180};
+    this.sound.play('event');
+  }
+  spawnMatchEvent() {
+    const types=['superMadness','healingRain','angryBots'];
+    const type=types[Math.floor(rand(0,types.length))];
+    const dur=type==='superMadness'?900:type==='healingRain'?600:1200;
+    this.matchEvent={type, timer:dur, maxTimer:dur};
+    const labels={superMadness:'⚡ Супер-безумие!',healingRain:'💧 Исцеляющий дождь',angryBots:'😡 Злые боты'};
+    const colors={superMadness:'#f9c74f',healingRain:'#56cfe1',angryBots:'#e63946'};
+    this.addEventBanner(labels[type], colors[type]);
+  }
 
   // ── RENDER ────────────────────────────────────────────────
   render() {
@@ -2387,11 +2981,11 @@ class Game {
       ctx.restore();
 
       // Brawler parade strolling along the bottom
-      const keys=['shelly','colt','bull','nita','edgar'];
+      const keys=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
       keys.forEach((key,i)=>{
-        const px=w/2+(i-2)*105;
+        const px=w/2+(i-3.5)*88;
         const wob=Math.sin(this.frameCount*0.02+i*1.7)*0.25;
-        drawBrawlerArt(ctx,key,px,h-105,1.6,-0.3+wob,{
+        drawBrawlerArt(ctx,key,px,h-105,1.5,-0.3+wob,{
           t:this.frameCount+i*37, walk:this.frameCount*0.12+i*2,
           moving:0.5, recoil:0, spawn:0, flash:false
         });
@@ -2407,23 +3001,28 @@ class Game {
     } else if (this.menuState==='select') {
       drawCartoonTitle(ctx,'ВЫБЕРИ БРАВЛЕРА',w/2,lerp(-60,68,easeOutBack(et/24)),34,this.frameCount);
 
-      const cw=148, ch=330, cgap=10;
-      const keys=['shelly','colt','bull','nita','edgar'];
-      const startX=w/2-(keys.length*cw+(keys.length-1)*cgap)/2;
-      const cy2=130;
+      const cw=170, ch=310, cgap=14;
+      const keys=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
+      const cols=4;
+      const startX=w/2-(cols*cw+(cols-1)*cgap)/2;
+      const rowYs=[100, 100+ch+16];
       this.brawlerCardRects=[];
-      const superLabels={shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь',edgar:'🌀 Прыжок'};
+      const superLabels={
+        shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь',
+        edgar:'🌀 Прыжок',spike:'🌵 Шипы',crow:'☠ Прыжок',mortis:'🦇 Мыши'
+      };
 
       for(let i=0;i<keys.length;i++) {
         const key=keys[i], cfg=BRAWLER_CONFIGS[key];
-        const cx2=startX+i*(cw+cgap);
+        const col=i%cols, row=Math.floor(i/cols);
+        const cx2=startX+col*(cw+cgap);
+        const cy2=rowYs[row];
         const hov=this.hoverBrawler===key;
-        // Staggered entrance + hover lift; visual only, hit rect stays put
-        const ce=easeOutBack((et-i*6)/22);
+        const ce=easeOutBack((et-i*5)/22);
         const yOff=(hov?-6:0)+lerp(60,0,ce);
 
         ctx.save();
-        ctx.globalAlpha=easeOutCubic((et-i*6)/14);
+        ctx.globalAlpha=easeOutCubic((et-i*5)/14);
         ctx.translate(0,yOff);
 
         // Card body: brawler-coloured gradient
@@ -2450,10 +3049,10 @@ class Game {
           ctx.restore();
         }
 
-        // Podium glow + live portrait
+        // Portrait
         ctx.fillStyle='rgba(255,255,255,0.12)';
-        ctx.beginPath(); ctx.ellipse(cx2+cw/2,cy2+128,cw*0.34,20,0,0,TAU); ctx.fill();
-        drawBrawlerArt(ctx,key,cx2+cw/2,cy2+95,2.2,-0.45,{
+        ctx.beginPath(); ctx.ellipse(cx2+cw/2,cy2+108,cw*0.32,18,0,0,TAU); ctx.fill();
+        drawBrawlerArt(ctx,key,cx2+cw/2,cy2+80,2.0,-0.45,{
           t:this.frameCount+i*53, walk:0, moving:0, recoil:0, spawn:0, flash:false
         });
 
@@ -2467,27 +3066,27 @@ class Game {
 
         // Name plate
         ctx.fillStyle='rgba(20,25,50,0.85)';
-        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+170,cw-20,28,8); ctx.fill();
-        ctx.font=uiFont(17); ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+150,cw-20,26,8); ctx.fill();
+        ctx.font=uiFont(16); ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.lineJoin='round'; ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=3;
-        ctx.strokeText(cfg.name,cx2+cw/2,cy2+184);
+        ctx.strokeText(cfg.name,cx2+cw/2,cy2+163);
         ctx.fillStyle='#fff';
-        ctx.fillText(cfg.name,cx2+cw/2,cy2+184);
+        ctx.fillText(cfg.name,cx2+cw/2,cy2+163);
 
         // Stat bars
-        drawStatBar(ctx,cx2+14,cy2+214,cw-28,'HP',  cfg.hp/5000,'#4cd137');
-        drawStatBar(ctx,cx2+14,cy2+238,cw-28,'УРОН',cfg.damage*cfg.bulletCount/1750,'#e84118');
-        drawStatBar(ctx,cx2+14,cy2+262,cw-28,'СКОР',(cfg.speed-2.0)/0.6,'#00a8ff');
+        drawStatBar(ctx,cx2+12,cy2+192,cw-24,'HP',  cfg.hp/5000,'#4cd137');
+        drawStatBar(ctx,cx2+12,cy2+214,cw-24,'УРОН',cfg.damage*cfg.bulletCount/1750,'#e84118');
+        drawStatBar(ctx,cx2+12,cy2+236,cw-24,'СКОР',(cfg.speed-2.0)/0.6,'#00a8ff');
 
         // Super label
         ctx.fillStyle='rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+ch-40,cw-20,26,8); ctx.fill();
-        ctx.fillStyle='#ffdd00'; ctx.font=uiFont(11);
+        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+ch-38,cw-20,24,8); ctx.fill();
+        ctx.fillStyle='#ffdd00'; ctx.font=uiFont(10);
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-27);
+        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-26);
 
         ctx.restore();
-        this.brawlerCardRects.push({x:cx2,y:cy2,w:cw,h:ch,key});
+        this.brawlerCardRects.push({x:cx2,y:cy2+yOff,w:cw,h:ch,key});
       }
     }
   }
@@ -2617,11 +3216,35 @@ class Game {
     // Poison cloud
     this.poison.render(ctx);
 
+    // Day/Night overlay
+    const darkAlpha=0.38*Math.sin(this.dayPhase*Math.PI);
+    if (darkAlpha>0.02) {
+      ctx.fillStyle=`rgba(0,0,30,${darkAlpha})`; ctx.fillRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
+      if (darkAlpha>0.08) {
+        for (const st of this.stars) {
+          ctx.fillStyle=`rgba(255,255,255,${Math.min(1,darkAlpha*2.5)})`;
+          ctx.beginPath(); ctx.arc(st.x,st.y,1.5+st.r*0.5,0,TAU); ctx.fill();
+        }
+      }
+    }
+
+    // Slow zones (translucent teal circles)
+    for (const sz of this.slowZones) {
+      ctx.save();
+      ctx.globalAlpha=0.18;
+      ctx.fillStyle='#56cfe1';
+      ctx.beginPath(); ctx.arc(sz.x,sz.y,sz.r,0,TAU); ctx.fill();
+      ctx.globalAlpha=0.4; ctx.strokeStyle='#56cfe1'; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(sz.x,sz.y,sz.r,0,TAU); ctx.stroke();
+      ctx.restore();
+    }
+
     // Touch aim indicator (drawn under entities)
     this.renderTouchAim(ctx);
 
     for (const c of this.cubes)     c.render(ctx);
     for (const b of this.bears)     b.render(ctx,0,0);
+    for (const b of this.bats)      b.render(ctx,0,0);
     for (const p of this.particles) p.render(ctx,0,0);
     for (const b of this.bullets)   b.render(ctx,0,0);
     // Bush stealth: hidden enemies aren't drawn (dead player = spectator sees all)
@@ -2687,6 +3310,31 @@ class Game {
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('☠ Ядовитое облако сужается!',w/2,60);
       ctx.restore();
+    }
+
+    // Match event banner
+    if (this.eventBanner&&this.state===GameState.PLAYING) {
+      const eb=this.eventBanner;
+      eb.timer--;
+      if (eb.timer>0) {
+        const t=eb.timer/eb.maxTimer;
+        const sc=eb.timer>eb.maxTimer-20?lerp(0.5,1,1-(eb.timer-(eb.maxTimer-20))/20):
+                 t<0.15?lerp(0,1,t/0.15):1;
+        const alpha=t<0.2?t/0.2:1;
+        const yOff=eb.timer<30?lerp(0,-20,(30-eb.timer)/30):0;
+        ctx.save();
+        ctx.globalAlpha=alpha;
+        ctx.translate(w/2,80+yOff);
+        ctx.scale(sc,sc);
+        ctx.fillStyle=eb.color||'#f9c74f';
+        ctx.beginPath(); ctx.roundRect(-145,-16,290,32,10); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.font=uiFont(14);
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(eb.text,0,0);
+        ctx.restore();
+      } else {
+        this.eventBanner=null;
+      }
     }
 
     this.renderHUD(ctx,w,h);
@@ -3065,6 +3713,26 @@ class Game {
       ctx.fillText(`${medal} ${b.config.name}${b.isPlayer?' (ВЫ)':''}`,px+36,ry2);
       ctx.textAlign='right';
       ctx.fillText(`🧊${b.cubes}   ☠${b.kills}`,px+pw-36,ry2);
+      ctx.restore();
+    });
+
+    // Post-match stats block
+    const stats=this.playerStats;
+    const statStartY=py+74+sorted.length*28+16;
+    const statLines=[
+      `💥 Урон нанесён: ${Math.round(stats.damageDealt).toLocaleString()}`,
+      `🛡 Урон получен: ${Math.round(stats.damageReceived).toLocaleString()}`,
+      `🎯 Точность: ${stats.shotsFired>0?Math.round(stats.shotsHit/stats.shotsFired*100):0}%`,
+      `⏱ Время в бою: ${Math.floor(stats.timeAlive/3600)}:${String(Math.floor((stats.timeAlive%3600)/60)).padStart(2,'0')}:${String(stats.timeAlive%60).padStart(2,'0')}`
+    ];
+    statLines.forEach((txt,i)=>{
+      const sa=easeOutCubic((et-28-i*5)/14);
+      if (sa<=0) return;
+      ctx.save();
+      ctx.globalAlpha=sa;
+      ctx.font=uiFont(12); ctx.fillStyle='#cfe6ff';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText(txt,w/2,statStartY+i*20);
       ctx.restore();
     });
 
