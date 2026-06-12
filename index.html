@@ -96,67 +96,67 @@ const GameState = { MENU: 'menu', PLAYING: 'playing', GAME_OVER: 'gameOver' };
 
 // ── BRAWLER CONFIGS ──────────────────────────────────────────
 const BRAWLER_CONFIGS = {
-  // Stats follow Brawl Stars level-1 values (HP matches exactly;
-  // damage/speed/bullet counts kept proportional)
+  // Балансные статы: выровнены по винрейту в симуляциях матчей
+  // (см. историю коммитов); за основу взяты значения Brawl Stars level-1.
   shelly: {
-    name: 'Shelly', hp: 3600, speed: 2.3, damage: 240, range: 240,
-    reload: 90, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 5, spread: 0.45,
+    name: 'Shelly', hp: 3600, speed: 2.3, damage: 210, range: 250,
+    reload: 102, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 5, spread: 0.45,
     falloff: true,
     radius: 18, color: '#ff69b4', symbol: 'S',
-    superDamage: 320, superSpread: 0.7, superBullets: 9, superChargeRate: 0.13
+    superDamage: 320, superSpread: 0.7, superBullets: 9, superChargeRate: 0.10
   },
   colt: {
-    name: 'Colt', hp: 2800, speed: 2.3, damage: 288, range: 320,
-    reload: 85, attackCooldown: 30, bulletSpeed: 9, bulletCount: 6, spread: 0,
+    name: 'Colt', hp: 2800, speed: 2.3, damage: 225, range: 320,
+    reload: 95, attackCooldown: 30, bulletSpeed: 9, bulletCount: 6, spread: 0,
     radius: 16, color: '#4169e1', symbol: 'C',
     superDamage: 255, superBurstCount: 12, superChargeRate: 0.085
   },
   bull: {
-    name: 'Bull', hp: 5000, speed: 2.5, damage: 320, range: 170,
-    reload: 100, attackCooldown: 30, bulletSpeed: 5.5, bulletCount: 5, spread: 0.4,
+    name: 'Bull', hp: 5000, speed: 2.7, damage: 320, range: 170,
+    reload: 80, attackCooldown: 24, bulletSpeed: 5.5, bulletCount: 5, spread: 0.4,
     falloff: true,
     radius: 22, color: '#8b0000', symbol: 'B',
-    superDamage: 720, superChargeRate: 0.12,
+    superDamage: 680, superChargeRate: 0.12,
     chargeSpeed: 10, chargeDuration: 30
   },
   nita: {
-    name: 'Nita', hp: 3800, speed: 2.3, damage: 640, range: 260,
+    name: 'Nita', hp: 3800, speed: 2.3, damage: 500, range: 260,
     reload: 80, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 1, spread: 0,
     piercesEnemies: true, bulletRadius: 7, // her shockwave rolls through everyone
     radius: 17, color: '#8b4513', symbol: 'N',
-    superDamage: 0, superChargeRate: 0.11,
-    bearHp: 4200, bearDamage: 320, bearSpeed: 2.0,
+    superDamage: 0, superChargeRate: 0.09,
+    bearHp: 3400, bearDamage: 320, bearSpeed: 2.0,
     bearRadius: 20, bearDuration: 900
   },
   edgar: {
-    name: 'Edgar', hp: 3300, speed: 2.55, damage: 430, range: 90,
-    reload: 45, attackCooldown: 15, bulletSpeed: 14, bulletCount: 1, spread: 0,
+    name: 'Edgar', hp: 4800, speed: 2.9, damage: 520, range: 110,
+    reload: 45, attackCooldown: 12, bulletSpeed: 14, bulletCount: 1, spread: 0,
     bulletRadius: 10,
     radius: 16, color: '#6c5ce7', symbol: 'E',
-    lifesteal: 0.3,
-    superDamage: 0, superChargeRate: 0.12,
+    lifesteal: 0.7,
+    superDamage: 0, superChargeRate: 0.16,
     jumpRange: 240, jumpDuration: 36
   },
   spike: {
-    name: 'Spike', hp: 3200, speed: 2.2, damage: 240, range: 280,
-    reload: 90, attackCooldown: 25, bulletSpeed: 6, bulletCount: 1, spread: 0,
+    name: 'Spike', hp: 3200, speed: 2.2, damage: 310, range: 280,
+    reload: 90, attackCooldown: 25, bulletSpeed: 7, bulletCount: 1, spread: 0,
     bulletRadius: 8,
     radius: 17, color: '#4eb54e', symbol: 'Sp',
-    spikeExplode: true, spikeDamage: 240, spikeCount: 6,
+    spikeExplode: true, spikeDamage: 280, spikeCount: 6,
     superDamage: 0, superChargeRate: 0.11,
     superSpikeCount: 8, superSlowR: 90, superSlowDur: 180
   },
   crow: {
-    name: 'Crow', hp: 2800, speed: 2.65, damage: 160, range: 340,
+    name: 'Crow', hp: 2800, speed: 2.65, damage: 170, range: 340,
     reload: 85, attackCooldown: 20, bulletSpeed: 9, bulletCount: 3, spread: 0.22,
     bulletRadius: 5,
     radius: 16, color: '#2d3436', symbol: 'Cr',
-    poisonDps: 80, poisonDuration: 180,
+    poisonDps: 110, poisonDuration: 180,
     superDamage: 0, superChargeRate: 0.09,
     jumpRange: 200, jumpDuration: 28
   },
   mortis: {
-    name: 'Mortis', hp: 3600, speed: 2.1, damage: 700, range: 140,
+    name: 'Mortis', hp: 3600, speed: 2.1, damage: 690, range: 140,
     reload: 55, attackCooldown: 18, bulletSpeed: 15, bulletCount: 1, spread: 0,
     bulletRadius: 12,
     radius: 18, color: '#6d4c99', symbol: 'Mo',
@@ -1565,9 +1565,9 @@ class Brawler {
       case 'nita': // tough fur: 40% damage shield for 3s
         this.shieldTimer=180;
         break;
-      case 'edgar': // let's fly: instant +35 super charge
-        this.superCharge=Math.min(this.maxSuperCharge,this.superCharge+35);
-        if (g) g.addPopup(this.x,this.y-this.radius-16,'+35% ⚡','#ffdd55');
+      case 'edgar': // let's fly: instant +50 super charge
+        this.superCharge=Math.min(this.maxSuperCharge,this.superCharge+50);
+        if (g) g.addPopup(this.x,this.y-this.radius-16,'+50% ⚡','#ffdd55');
         break;
       case 'spike': { // surprise: burst 6 mini-spikes from self
         const cfg=this.config;
@@ -1884,8 +1884,8 @@ class BotAI {
     mx+=Math.cos(a+Math.PI/2)*strafe*0.6;
     my+=Math.sin(a+Math.PI/2)*strafe*0.6;
     me.moveX=mx; me.moveY=my;
-    // Mortis: always advance, no strafe; crow: kite backward
-    if (me.type==='mortis') { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    // Mortis/Edgar (мили): всегда давят, без стрейфа; crow: kite backward
+    if (me.type==='mortis'||me.type==='edgar') { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
     else if (me.type==='crow') {
       // kite: face enemy but step away slowly
       const kite=Math.cos(a+Math.PI)*0.3;
@@ -3874,7 +3874,7 @@ class Game {
         // Stat bars
         drawStatBar(ctx,cx2+12,cy2+192,cw-24,'HP',  cfg.hp/5000,'#4cd137');
         drawStatBar(ctx,cx2+12,cy2+214,cw-24,'УРОН',cfg.damage*cfg.bulletCount/1750,'#e84118');
-        drawStatBar(ctx,cx2+12,cy2+236,cw-24,'СКОР',(cfg.speed-2.0)/0.6,'#00a8ff');
+        drawStatBar(ctx,cx2+12,cy2+236,cw-24,'СКОР',(cfg.speed-2.0)/0.9,'#00a8ff');
 
         // Super label
         ctx.fillStyle='rgba(0,0,0,0.35)';
