@@ -146,6 +146,13 @@ const TAU = Math.PI * 2;
 const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5, T_STEEL=6;
 const CRATE_HP = 2900; // only T_CRATE has HP; T_BOX/T_WALL destroyed instantly by supers
 
+// Map themes — control ground colour, water colour, sky/fog, and tile decor style
+const THEME_DESERT = { ground:'#e3c590', outer:'#cdb079', water:'#4aa9de', bg:'#dfc08a', decor:'sand' };
+const THEME_ACID   = { ground:'#3b2f4d', outer:'#2a2238', water:'#56c878', bg:'#3b2f4d', decor:'dark' };
+const THEME_OASIS  = { ground:'#dcc78f', outer:'#c3aa68', water:'#4aa9de', bg:'#d8c080', decor:'sand' };
+
+let currentMapIdx = 0;
+
 let game = null; // global singleton, set on load
 
 // Номер ряда дробины в шахматном залпе: крайние впереди, центр сзади
@@ -236,6 +243,97 @@ const BRAWLER_CONFIGS = {
 // ── TILE MAP (left-right symmetric, 60×46, TILE=40) ──────────
 // .=empty  S=spawn  R=reinforced(indestructible)  X=wall(super only)
 // B=box(super only)  C=power-crate(any dmg+drop)  b=bush  W=water
+// Three maps; one chosen randomly each match via currentMapIdx.
+const MAP_LAYOUTS = (() => {
+  // Build a 60-char symmetric row from a 29-char left inner half.
+  const m = l => 'R' + l + [...l].reverse().join('') + 'R';
+  const BDR = 'R'.repeat(60);
+  // Build 46-row map with top-bottom symmetry: rows[0..22] → [0..22, 22..1, border]
+  const sym = t => { const r=[...t]; for(let i=22;i>=1;i--) r.push(t[i]); r.push(BDR); return r; };
+
+  const truth = sym([BDR,
+    m('....BB..BB...................'),
+    m('....BB..BB...................'),
+    m('.S.......BB..................'),
+    m('......BBB....................'),
+    m('......BBB........C...........'),
+    m('..WW....BB...................'),
+    m('..WW....BB....B..............'),
+    m('..WW..........B..............'),
+    m('.........BBB.................'),
+    m('....BBB...................C..'),
+    m('.....BBB.................BB..'),
+    m('..BB..BB.....................'),
+    m('..BB..BB.................C...'),
+    m('.S.......BB...............C..'),
+    m('.........BB....WW............'),
+    m('.........BB....WW............'),
+    m('..........BB...WW....C.......'),
+    m('.........BB..................'),
+    m('.......C..BB.................'),
+    m('..........BB.................'),
+    m('.....BB.......b.b............'),
+    m('.....BB.......bbb............'),
+  ]);
+
+  const acid = sym([BDR,
+    m('WWWWWWWW.....b...........C...'),
+    m('WWWWWWWW.....bb..............'),
+    m('.S..WWWW.....b...............'),
+    m('....WWWW.....X...............'),
+    m('....WWWW.....XX..............'),
+    m('....b.b...RRRR...............'),
+    m('.....b....RRR........C.......'),
+    m('....bbb...RRR................'),
+    m('....bbb...RRR....bbb.........'),
+    m('....WW....b......bbb.........'),
+    m('....WW....XXX....b...........'),
+    m('....WW....XXX................'),
+    m('....b.....XXX....b...........'),
+    m('.S..b..............b.........'),
+    m('....b.............bbb........'),
+    m('....b......C.....bbb.....C...'),
+    m('....WW...bbb.................'),
+    m('....WW...bbb.................'),
+    m('.....b...bbb...C.............'),
+    m('.....b...X...C...............'),
+    m('....bbb..X.....b.............'),
+    m('....bbb..X.....bbb...........'),
+  ]);
+
+  const oasis = sym([BDR,
+    m('bbbbbbbbb....B.B.............'),
+    m('bbbbbbbb.....B...............'),
+    m('.S.bbbbb.....B...............'),
+    m('...bbbbbbb...B...............'),
+    m('...bbbbbb....BB..............'),
+    m('...bbbbb.....BBB.............'),
+    m('....bbbb.....BBB.............'),
+    m('....bbb.....BBB...C..........'),
+    m('.....bb..XXX.....C...........'),
+    m('......b..XX...BB.............'),
+    m('......b..XX...BB.........C...'),
+    m('......b.....BB.......C.......'),
+    m('.......b....BB...............'),
+    m('.S.........BB............C...'),
+    m('...........BB....C...........'),
+    m('...........BB....b...........'),
+    m('........WWW......bbb.........'),
+    m('........WWW......bbb.........'),
+    m('..........C......bbbbb.......'),
+    m('..........C.......bbbbb......'),
+    m('...........C......bbbbb......'),
+    m('..........C.......bbbbb......'),
+  ]);
+
+  return [
+    { name:'Truth',      theme:THEME_DESERT, rows:truth },
+    { name:'Acid Lakes', theme:THEME_ACID,   rows:acid  },
+    { name:'Oasis',      theme:THEME_OASIS,  rows:oasis },
+  ];
+})();
+
+// Original single-map kept as fallback reference (not used — buildTileMap reads MAP_LAYOUTS)
 const MAP_ASCII = [
   'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', // 0
   'R....BBB............................................BBB....R', // 1
@@ -286,19 +384,21 @@ const MAP_ASCII = [
 ];
 
 function buildTileMap() {
-  if (MAP_ASCII.length !== MAP_ROWS)
-    throw new Error(`MAP_ASCII has ${MAP_ASCII.length} rows, expected ${MAP_ROWS}`);
+  const layout = MAP_LAYOUTS[currentMapIdx];
+  const rows = layout.rows;
+  if (rows.length !== MAP_ROWS)
+    throw new Error(`MAP layout has ${rows.length} rows, expected ${MAP_ROWS}`);
   const grid = new Uint8Array(MAP_COLS*MAP_ROWS);
   const boxHp = new Float32Array(MAP_COLS*MAP_ROWS);
   const spawnPoints = [];
   const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER,'R':T_STEEL};
   for (let ty=0; ty<MAP_ROWS; ty++) {
-    const row = MAP_ASCII[ty];
+    const row = rows[ty];
     if (row.length !== MAP_COLS)
-      throw new Error(`MAP_ASCII row ${ty} has ${row.length} cols, expected ${MAP_COLS}`);
+      throw new Error(`MAP layout row ${ty} has ${row.length} cols, expected ${MAP_COLS}`);
     for (let tx=0; tx<MAP_COLS; tx++) {
       const ch = row[tx], t = CHAR_TILE[ch];
-      if (t === undefined) throw new Error(`MAP_ASCII bad char '${ch}' at ${tx},${ty}`);
+      if (t === undefined) throw new Error(`MAP layout bad char '${ch}' at ${tx},${ty}`);
       const i = ty*MAP_COLS+tx;
       grid[i] = t;
       if (t === T_CRATE) boxHp[i] = CRATE_HP; // only T_CRATE has HP; T_BOX is instant-destroyed
@@ -307,6 +407,8 @@ function buildTileMap() {
   }
   return {
     grid, boxHp, spawnPoints,
+    theme: layout.theme,
+    name: layout.name,
     version: 0, // bumped when a box breaks (minimap cache invalidation)
     tileAt(tx, ty) {
       if (tx<0||ty<0||tx>=MAP_COLS||ty>=MAP_ROWS) return T_STEEL;
@@ -2288,27 +2390,49 @@ function tileHash(tx, ty) {
   return (h^(h>>16))>>>0;
 }
 
-// Sparse, quiet decor on empty grass tiles (общий для 2D-рендера
-// и текстуры земли в 3D-режиме)
-function drawEmptyTileDecor(ctx,x,y,hsh) {
+// Sparse decor on empty tiles — style varies by theme.decor ('grass','sand','dark')
+function drawEmptyTileDecor(ctx,x,y,hsh,decor='grass') {
   const d=hsh%19;
-  if (d===0) { // grass blades
-    ctx.strokeStyle='#6db546'; ctx.lineWidth=2; ctx.lineCap='round';
-    const gx=x+14+(hsh>>5)%52, gy=y+14+(hsh>>9)%52;
-    ctx.beginPath();
-    ctx.moveTo(gx,gy); ctx.lineTo(gx-3,gy-8);
-    ctx.moveTo(gx+4,gy); ctx.lineTo(gx+6,gy-7);
-    ctx.moveTo(gx+8,gy); ctx.lineTo(gx+7,gy-9);
-    ctx.stroke();
-  } else if (d===5) { // flower
-    const fx2=x+16+(hsh>>5)%48, fy=y+16+(hsh>>9)%48;
-    ctx.fillStyle='rgba(255,255,255,0.85)';
-    dot(ctx,fx2-4,fy,3); dot(ctx,fx2+4,fy,3); dot(ctx,fx2,fy-4,3); dot(ctx,fx2,fy+4,3);
-    ctx.fillStyle='#ffd34d'; dot(ctx,fx2,fy,2.6);
-  } else if (d===11) { // pebbles
-    ctx.fillStyle='rgba(110,130,110,0.4)';
-    dot(ctx,x+20+(hsh>>5)%40,y+20+(hsh>>9)%40,4);
-    dot(ctx,x+28+(hsh>>7)%30,y+30+(hsh>>11)%30,2.6);
+  if (decor==='sand') {
+    // Occasional sand ripples and pebbles; no green grass
+    if (d===0||d===3) { // ripple lines
+      ctx.strokeStyle='rgba(160,120,60,0.25)'; ctx.lineWidth=1.5; ctx.lineCap='round';
+      const rx=x+8+(hsh>>5)%44, ry=y+12+(hsh>>9)%36;
+      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx+10,ry+1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx+2,ry+5); ctx.lineTo(rx+8,ry+5); ctx.stroke();
+    } else if (d===9) { // small pebble
+      ctx.fillStyle='rgba(150,110,60,0.3)';
+      dot(ctx,x+18+(hsh>>5)%44,y+18+(hsh>>9)%44,3);
+    }
+  } else if (decor==='dark') {
+    // Dark stone/alien ground — faint cracks and speckles
+    if (d===0||d===4) { // faint crack
+      ctx.strokeStyle='rgba(80,60,100,0.35)'; ctx.lineWidth=1; ctx.lineCap='round';
+      const cx2=x+10+(hsh>>5)%40, cy2=y+10+(hsh>>9)%40;
+      ctx.beginPath(); ctx.moveTo(cx2,cy2); ctx.lineTo(cx2+6+(hsh>>11)%8,cy2+4+(hsh>>13)%6); ctx.stroke();
+    } else if (d===10) { // speck
+      ctx.fillStyle='rgba(120,90,150,0.25)';
+      dot(ctx,x+20+(hsh>>5)%40,y+20+(hsh>>9)%40,2.5);
+    }
+  } else { // 'grass' (default)
+    if (d===0) { // grass blades
+      ctx.strokeStyle='#6db546'; ctx.lineWidth=2; ctx.lineCap='round';
+      const gx=x+14+(hsh>>5)%52, gy=y+14+(hsh>>9)%52;
+      ctx.beginPath();
+      ctx.moveTo(gx,gy); ctx.lineTo(gx-3,gy-8);
+      ctx.moveTo(gx+4,gy); ctx.lineTo(gx+6,gy-7);
+      ctx.moveTo(gx+8,gy); ctx.lineTo(gx+7,gy-9);
+      ctx.stroke();
+    } else if (d===5) { // flower
+      const fx2=x+16+(hsh>>5)%48, fy=y+16+(hsh>>9)%48;
+      ctx.fillStyle='rgba(255,255,255,0.85)';
+      dot(ctx,fx2-4,fy,3); dot(ctx,fx2+4,fy,3); dot(ctx,fx2,fy-4,3); dot(ctx,fx2,fy+4,3);
+      ctx.fillStyle='#ffd34d'; dot(ctx,fx2,fy,2.6);
+    } else if (d===11) { // pebbles
+      ctx.fillStyle='rgba(110,130,110,0.4)';
+      dot(ctx,x+20+(hsh>>5)%40,y+20+(hsh>>9)%40,4);
+      dot(ctx,x+28+(hsh>>7)%30,y+30+(hsh>>11)%30,2.6);
+    }
   }
 }
 
@@ -2661,7 +2785,8 @@ class Renderer3D {
     this.renderer.toneMappingExposure=1.08;
 
     this.scene=new THREE.Scene();
-    this._dayBg=new THREE.Color('#7ec850'); this._nightBg=new THREE.Color('#2a4030');
+    const _initBg=tileMap.theme.bg;
+    this._dayBg=new THREE.Color(_initBg); this._nightBg=new THREE.Color('#2a4030');
     this._dayAmb=new THREE.Color('#ffffff'); this._nightAmb=new THREE.Color('#8090c8');
     this.scene.background=this._dayBg.clone();
     this.scene.fog=new THREE.Fog(this._dayBg.clone(),1400,3200);
@@ -2700,6 +2825,11 @@ class Renderer3D {
     this.mapR.build(game);
     this.charR.clear();
     this.fxR.clear();
+    // Apply map theme to sky / fog
+    const th = tileMap.theme;
+    this._dayBg.set(th.bg);
+    this.scene.background.set(th.bg);
+    if (this.scene.fog) this.scene.fog.color.set(th.bg);
   }
 
   render(game) {
@@ -2754,18 +2884,19 @@ class MapRenderer3D {
     if (this.root) { this.scene.remove(this.root); disposeGroupMats(this.root); }
     this.root=new THREE.Group();
     this.boxes.clear(); this.wallGroups.clear(); this.bushes.length=0; this.water.length=0;
+    const theme = tileMap.theme;
 
     // Земля: текстура из 2D-декора тайлов (травинки, цветы, камешки)
     const ground=new THREE.Mesh(
       new THREE.PlaneGeometry(ARENA_WIDTH,ARENA_HEIGHT).rotateX(-Math.PI/2),
-      new THREE.MeshLambertMaterial({map:this.makeGroundTexture()}));
+      new THREE.MeshLambertMaterial({map:this.makeGroundTexture(theme)}));
     ground.position.set(ARENA_WIDTH/2,0,ARENA_HEIGHT/2);
     ground.receiveShadow=true;
     this.root.add(ground);
-    // Тёмная «внешняя» земля за границей арены
+    // Внешняя земля за границей арены (тема-зависимый цвет)
     const outer=new THREE.Mesh(
       new THREE.PlaneGeometry(9000,9000).rotateX(-Math.PI/2),
-      this.lambert('#5da33c'));
+      this.lambert(theme.outer));
     outer.position.set(ARENA_WIDTH/2,-2,ARENA_HEIGHT/2);
     outer.receiveShadow=true;
     this.root.add(outer);
@@ -2840,7 +2971,7 @@ class MapRenderer3D {
         } else if (t===T_WATER) {
           const geom=new THREE.PlaneGeometry(TILE,TILE,4,4).rotateX(-Math.PI/2);
           const mesh=new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
-            color:new THREE.Color('#4aa9de'), transparent:true, opacity:0.8}));
+            color:new THREE.Color(theme.water), transparent:true, opacity:0.85}));
           mesh.position.set(x,3,z);
           this.water.push({mesh,geom,wx:x,wz:z});
           this.root.add(mesh);
@@ -2877,18 +3008,21 @@ class MapRenderer3D {
     this.scene.add(this.root);
   }
 
-  makeGroundTexture() {
+  makeGroundTexture(theme) {
     const c=document.createElement('canvas');
     c.width=1200; c.height=920;
     const g=c.getContext('2d');
     g.scale(0.5,0.5);
-    g.fillStyle='#7ec850'; g.fillRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
+    g.fillStyle=theme.ground; g.fillRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
     for (let ty=0;ty<MAP_ROWS;ty++)
       for (let tx=0;tx<MAP_COLS;tx++) {
         const x=tx*TILE, y=ty*TILE, t=tileMap.tileAt(tx,ty);
         if ((tx+ty)%2===0) { g.fillStyle='rgba(255,255,255,0.02)'; g.fillRect(x,y,TILE,TILE); }
-        if (t===T_EMPTY) drawEmptyTileDecor(g,x,y,tileHash(tx,ty));
-        else if (t===T_WATER) { g.fillStyle='#2f7fb8'; g.fillRect(x-1,y-1,TILE+2,TILE+2); }
+        if (t===T_EMPTY) drawEmptyTileDecor(g,x,y,tileHash(tx,ty),theme.decor);
+        else if (t===T_WATER) {
+          // darken water slightly for ground texture (3D mesh covers it anyway)
+          g.fillStyle=theme.water; g.fillRect(x-1,y-1,TILE+2,TILE+2);
+        }
       }
     const tex=new THREE.CanvasTexture(c);
     tex.anisotropy=8;
@@ -3739,6 +3873,7 @@ class Game {
     this.shake={power:0,timer:0};
     this.countdown=180; this.goTimer=0; // 3-2-1 countdown before the brawl
     this.lastTrophyDelta=null;
+    currentMapIdx = randInt(0, MAP_LAYOUTS.length-1);
     tileMap=buildTileMap();
     this.poison=new PoisonZone();
     this.mmCanvas=null; this.mmVersion=-1;
@@ -4512,7 +4647,7 @@ class Game {
   }
 
   renderGame(ctx,w,h) {
-    ctx.fillStyle='#7ec850'; ctx.fillRect(0,0,w,h);
+    ctx.fillStyle=tileMap.theme.ground; ctx.fillRect(0,0,w,h);
     ctx.save();
     // Camera + screen shake
     let shx=0, shy=0;
@@ -4540,7 +4675,7 @@ class Game {
         const x=tx*TILE, y=ty*TILE;
         const hsh=tileHash(tx,ty);
         if (t===T_EMPTY) {
-          drawEmptyTileDecor(ctx,x,y,hsh);
+          drawEmptyTileDecor(ctx,x,y,hsh,tileMap.theme.decor);
           continue;
         }
         if (t===T_STEEL) {
@@ -4613,7 +4748,7 @@ class Game {
           const wN=tileMap.tileAt(tx,ty-1)===T_WATER, wS=tileMap.tileAt(tx,ty+1)===T_WATER;
           const wW=tileMap.tileAt(tx-1,ty)===T_WATER, wE=tileMap.tileAt(tx+1,ty)===T_WATER;
           const cr=[(!wN&&!wW)?16:0,(!wN&&!wE)?16:0,(!wS&&!wE)?16:0,(!wS&&!wW)?16:0];
-          ctx.fillStyle='#4aa9de';
+          ctx.fillStyle=tileMap.theme.water;
           ctx.beginPath(); ctx.roundRect(x,y,TILE,TILE,cr); ctx.fill();
           // quiet glint
           if ((hsh%3)===0) {
