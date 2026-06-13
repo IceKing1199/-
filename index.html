@@ -2577,6 +2577,7 @@ class Renderer3D {
     this.scene.background=this._dayBg.clone();
 
     // Камера Brawl Stars: наклон ~55°, видимая зона ≈ 800×600 игровых юнитов
+    this.viewW=CANVAS_WIDTH;
     this.camera=new THREE.PerspectiveCamera(40, CANVAS_WIDTH/CANVAS_HEIGHT, 80, 4000);
     const pitch=55*Math.PI/180, L=800;
     this.camH=Math.sin(pitch)*L; this.camD=Math.cos(pitch)*L;
@@ -2613,7 +2614,7 @@ class Renderer3D {
 
   render(game) {
     // Камера смотрит в центр текущего 2D-вьюпорта (логика камеры не менялась)
-    let cx=game.camera.x+CANVAS_WIDTH/2, cz=game.camera.y+CANVAS_HEIGHT/2;
+    let cx=game.camera.x+this.viewW/2, cz=game.camera.y+CANVAS_HEIGHT/2;
     if (game.shake.timer>0) {
       const k=game.shake.power*(game.shake.timer/14);
       cx+=rand(-k,k); cz+=rand(-k,k);
@@ -2639,7 +2640,7 @@ class Renderer3D {
   // Проекция игровой точки (x,y — план, h — высота) в координаты 2D-канваса
   worldToScreen(x,y,h=0) {
     const v=this._v.set(x,h,y).project(this.camera);
-    return { x:(v.x*0.5+0.5)*CANVAS_WIDTH, y:(-v.y*0.5+0.5)*CANVAS_HEIGHT };
+    return { x:(v.x*0.5+0.5)*this.viewW, y:(-v.y*0.5+0.5)*CANVAS_HEIGHT };
   }
 }
 
@@ -3319,6 +3320,7 @@ class Game {
   constructor() {
     this.canvas=document.getElementById('gameCanvas');
     this.ctx=this.canvas.getContext('2d');
+    this.viewW=CANVAS_WIDTH;
     // 3D world renderer (Three.js). Null = классический 2D-фоллбэк.
     this.renderer3d=Renderer3D.create(document.getElementById('glCanvas'));
     this.resizeCanvas();
@@ -3366,6 +3368,7 @@ class Game {
     this.superStick =new VirtualJoystick(CANVAS_WIDTH-202, CANVAS_HEIGHT-192, 42, 22);
     this.gadgetBtn={x:CANVAS_WIDTH-58, y:CANVAS_HEIGHT-195, r:26}; // tap-only green button
     this.touchAimMode=null; // null | 'attack' | 'super'
+    this.layoutControls(); // re-anchor right-edge controls to actual viewW
 
     this.setupInput();
     this.lastTime=0;
@@ -3375,7 +3378,16 @@ class Game {
   resizeCanvas() {
     this.canvas.width=window.innerWidth;
     this.canvas.height=window.innerHeight;
-    if (this.renderer3d) this.renderer3d.resize(this.canvas.width, this.canvas.height);
+    this.viewW=Math.round(CANVAS_HEIGHT*this.canvas.width/this.canvas.height);
+    if (this.renderer3d) { this.renderer3d.viewW=this.viewW; this.renderer3d.resize(this.canvas.width,this.canvas.height); }
+    this.layoutControls();
+  }
+
+  layoutControls() {
+    const W=this.viewW||CANVAS_WIDTH;
+    if (this.attackStick) { this.attackStick.baseX=W-105; if(!this.attackStick.active) this.attackStick.knobX=W-105; }
+    if (this.superStick)  { this.superStick.baseX =W-202; if(!this.superStick.active)  this.superStick.knobX =W-202; }
+    if (this.gadgetBtn)   this.gadgetBtn.x=W-58;
   }
 
   setupInput() {
@@ -3417,8 +3429,8 @@ class Game {
 
   toCanvasCoords(clientX, clientY) {
     const rect=this.canvas.getBoundingClientRect();
-    const sx=this.canvas.width/CANVAS_WIDTH, sy=this.canvas.height/CANVAS_HEIGHT;
-    return { x:(clientX-rect.left)/sx, y:(clientY-rect.top)/sy };
+    const s=this.canvas.height/CANVAS_HEIGHT;
+    return { x:(clientX-rect.left)/s, y:(clientY-rect.top)/s };
   }
 
   // ── TOUCH HANDLERS ───────────────────────────────────────
@@ -3617,7 +3629,7 @@ class Game {
     }
     this.aliveCount=TOTAL_PLAYERS;
     // Snap camera to spawn
-    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-CANVAS_WIDTH,this.player.x-CANVAS_WIDTH/2));
+    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-this.viewW,this.player.x-this.viewW/2));
     this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-CANVAS_HEIGHT,this.player.y-CANVAS_HEIGHT/2));
     if (this.renderer3d) this.renderer3d.onMatchStart(this);
   }
@@ -4063,11 +4075,12 @@ class Game {
 
   updateCamera() {
     if (!this.player) return;
-    const tx=this.player.x-CANVAS_WIDTH/2;
+    const vw=this.viewW;
+    const tx=this.player.x-vw/2;
     const ty=this.player.y-CANVAS_HEIGHT/2;
     this.camera.x=lerp(this.camera.x,tx,0.12);
     this.camera.y=lerp(this.camera.y,ty,0.12);
-    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-CANVAS_WIDTH,this.camera.x));
+    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-vw,this.camera.x));
     this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-CANVAS_HEIGHT,this.camera.y));
   }
 
@@ -4098,12 +4111,12 @@ class Game {
 
   // ── RENDER ────────────────────────────────────────────────
   render() {
-    const ctx=this.ctx, w=CANVAS_WIDTH, h=CANVAS_HEIGHT;
-    const sx=this.canvas.width/w, sy=this.canvas.height/h;
+    const ctx=this.ctx, w=this.viewW, h=CANVAS_HEIGHT;
+    const s=this.canvas.height/CANVAS_HEIGHT;
     // 3D-мир рисуется на нижнем WebGL-канвасе, 2D-канвас сверху несёт UI.
     const use3d=!!this.renderer3d&&this.state!==GameState.MENU;
     if (use3d) this.renderer3d.render(this);
-    ctx.save(); ctx.scale(sx,sy);
+    ctx.save(); ctx.scale(s,s);
     ctx.clearRect(0,0,w,h);
     const renderWorld=use3d
       ? (c,ww,hh)=>this.renderGameOverlay(c,ww,hh)
