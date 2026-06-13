@@ -3368,11 +3368,11 @@ class Game {
     this.menuTouch=null; // тап vs драг-скролл на тач-устройствах
 
     // Mobile twin-stick controls (Brawl Stars layout)
-    this.moveStick  =new VirtualJoystick(120, CANVAS_HEIGHT-120, 72, 34);
-    this.attackStick=new VirtualJoystick(CANVAS_WIDTH-112, CANVAS_HEIGHT-112, 72, 34);
-    this.superStick =new VirtualJoystick(CANVAS_WIDTH-215, CANVAS_HEIGHT-248, 54, 28);
-    this.gadgetBtn={x:CANVAS_WIDTH-62, y:CANVAS_HEIGHT-248, r:34}; // tap-only green button
-    this.autoBtn={x:CANVAS_WIDTH-260, y:CANVAS_HEIGHT-112, r:38, _pressed:false}; // auto-attack tap button
+    this.moveStick  =new VirtualJoystick(130, CANVAS_HEIGHT-130, 120, 55);
+    this.attackStick=new VirtualJoystick(CANVAS_WIDTH-130, CANVAS_HEIGHT-130, 120, 55);
+    this.superStick =new VirtualJoystick(CANVAS_WIDTH-290, CANVAS_HEIGHT-310, 90, 45);
+    this.gadgetBtn={x:CANVAS_WIDTH-70, y:CANVAS_HEIGHT-320, r:55}; // tap-only green button
+    this.autoBtn={x:CANVAS_WIDTH-370, y:CANVAS_HEIGHT-130, r:65, _pressed:false}; // auto-attack tap button
     this.touchAimMode=null; // null | 'attack' | 'super'
     this.layoutControls(); // re-anchor right-edge controls to actual viewW
 
@@ -3393,10 +3393,10 @@ class Game {
 
   layoutControls() {
     const W=this.viewW||CANVAS_WIDTH;
-    if (this.attackStick) { this.attackStick.baseX=W-112; if(!this.attackStick.active) this.attackStick.knobX=W-112; }
-    if (this.superStick)  { this.superStick.baseX =W-215; if(!this.superStick.active)  this.superStick.knobX =W-215; }
-    if (this.gadgetBtn)   this.gadgetBtn.x=W-62;
-    if (this.autoBtn)     this.autoBtn.x=W-260;
+    if (this.attackStick) { this.attackStick.baseX=W-130; if(!this.attackStick.active) this.attackStick.knobX=W-130; }
+    if (this.superStick)  { this.superStick.baseX =W-290; if(!this.superStick.active)  this.superStick.knobX =W-290; }
+    if (this.gadgetBtn)   this.gadgetBtn.x=W-70;
+    if (this.autoBtn)     this.autoBtn.x=W-370;
   }
 
   setupInput() {
@@ -3444,6 +3444,7 @@ class Game {
 
   // ── TOUCH HANDLERS ───────────────────────────────────────
   onTouchStart(e) {
+    this._hadTouch=true;
     this.sound.unlock();
     for (const t of e.changedTouches) {
       const p=this.toCanvasCoords(t.clientX,t.clientY);
@@ -4887,7 +4888,7 @@ class Game {
     });
     ctx.restore();
 
-    if (IS_TOUCH) {
+    if (IS_TOUCH||this._hadTouch) {
       this.renderJoysticks(ctx);
     } else {
       // Controls hint (desktop only) — quiet single line
@@ -4910,12 +4911,12 @@ class Game {
     ctx.strokeStyle='rgba(0,0,0,0.25)'; ctx.lineWidth=2;
     ctx.beginPath(); ctx.arc(ms.knobX,ms.knobY,ms.knobRadius,0,TAU); ctx.stroke();
     // Direction arrows on the base
-    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font=uiFont(16);
+    ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font=uiFont(22);
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('▲',ms.baseX,ms.baseY-ms.baseRadius+14);
-    ctx.fillText('▼',ms.baseX,ms.baseY+ms.baseRadius-14);
-    ctx.fillText('◀',ms.baseX-ms.baseRadius+14,ms.baseY);
-    ctx.fillText('▶',ms.baseX+ms.baseRadius-14,ms.baseY);
+    ctx.fillText('▲',ms.baseX,ms.baseY-ms.baseRadius+18);
+    ctx.fillText('▼',ms.baseX,ms.baseY+ms.baseRadius-18);
+    ctx.fillText('◀',ms.baseX-ms.baseRadius+18,ms.baseY);
+    ctx.fillText('▶',ms.baseX+ms.baseRadius-18,ms.baseY);
     ctx.restore();
 
     // ── Attack stick (right) ──
@@ -4928,9 +4929,9 @@ class Game {
     for(let i=0;i<3;i++) {
       const a0=segStart+i*(segSpan+gap), a1=a0+segSpan;
       ctx.strokeStyle=i<p.ammo?'#ffaa00':'rgba(255,255,255,0.15)';
-      ctx.lineWidth=8;
+      ctx.lineWidth=12;
       if(i<p.ammo){ ctx.shadowColor='#ffaa00'; ctx.shadowBlur=6; } else ctx.shadowBlur=0;
-      ctx.beginPath(); ctx.arc(as.baseX,as.baseY,as.baseRadius+10,a0,a1); ctx.stroke();
+      ctx.beginPath(); ctx.arc(as.baseX,as.baseY,as.baseRadius+14,a0,a1); ctx.stroke();
     }
     ctx.shadowBlur=0;
     // Knob
@@ -4941,12 +4942,12 @@ class Game {
     ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=2; ctx.stroke();
     // Crosshair icon
     ctx.strokeStyle='#fff'; ctx.lineWidth=2;
-    ctx.beginPath(); ctx.arc(as.knobX,as.knobY,11,0,TAU); ctx.stroke();
+    ctx.beginPath(); ctx.arc(as.knobX,as.knobY,16,0,TAU); ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(as.knobX-16,as.knobY); ctx.lineTo(as.knobX-7,as.knobY);
-    ctx.moveTo(as.knobX+7,as.knobY);  ctx.lineTo(as.knobX+16,as.knobY);
-    ctx.moveTo(as.knobX,as.knobY-16); ctx.lineTo(as.knobX,as.knobY-7);
-    ctx.moveTo(as.knobX,as.knobY+7);  ctx.lineTo(as.knobX,as.knobY+16);
+    ctx.moveTo(as.knobX-22,as.knobY); ctx.lineTo(as.knobX-10,as.knobY);
+    ctx.moveTo(as.knobX+10,as.knobY);  ctx.lineTo(as.knobX+22,as.knobY);
+    ctx.moveTo(as.knobX,as.knobY-22); ctx.lineTo(as.knobX,as.knobY-10);
+    ctx.moveTo(as.knobX,as.knobY+10);  ctx.lineTo(as.knobX,as.knobY+22);
     ctx.stroke();
     ctx.restore();
 
@@ -4961,7 +4962,7 @@ class Game {
       ctx.fillStyle='rgba(40,30,0,0.45)';
       ctx.beginPath(); ctx.arc(ss.baseX,ss.baseY,ss.baseRadius,0,TAU); ctx.fill();
       ctx.shadowBlur=0;
-      ctx.strokeStyle='#ffdd00'; ctx.lineWidth=4;
+      ctx.strokeStyle='#ffdd00'; ctx.lineWidth=6;
       ctx.beginPath(); ctx.arc(ss.baseX,ss.baseY,ss.baseRadius,0,TAU); ctx.stroke();
       // Knob
       const sg=ctx.createRadialGradient(ss.knobX,ss.knobY,3,ss.knobX,ss.knobY,ss.knobRadius);
@@ -4969,26 +4970,26 @@ class Game {
       ctx.fillStyle=sg;
       ctx.beginPath(); ctx.arc(ss.knobX,ss.knobY,ss.knobRadius,0,TAU); ctx.fill();
       ctx.strokeStyle='#aa8800'; ctx.lineWidth=2; ctx.stroke();
-      ctx.fillStyle='#553300'; ctx.font=uiFont(24);
+      ctx.fillStyle='#553300'; ctx.font=uiFont(32);
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('⚡',ss.knobX,ss.knobY+1);
     } else {
       // Greyed out with charge progress ring
       ctx.fillStyle='rgba(0,0,0,0.28)';
       ctx.beginPath(); ctx.arc(ss.baseX,ss.baseY,ss.baseRadius,0,TAU); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=4;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=6;
       ctx.beginPath(); ctx.arc(ss.baseX,ss.baseY,ss.baseRadius,0,TAU); ctx.stroke();
-      ctx.strokeStyle='#ffdd00'; ctx.lineWidth=4;
+      ctx.strokeStyle='#ffdd00'; ctx.lineWidth=6;
       ctx.beginPath();
       ctx.arc(ss.baseX,ss.baseY,ss.baseRadius,-Math.PI/2,-Math.PI/2+TAU*supR);
       ctx.stroke();
       ctx.fillStyle='rgba(120,120,120,0.6)';
       ctx.beginPath(); ctx.arc(ss.baseX,ss.baseY,ss.knobRadius,0,TAU); ctx.fill();
-      ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font=uiFont(24);
+      ctx.fillStyle='rgba(255,255,255,0.45)'; ctx.font=uiFont(32);
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('⚡',ss.baseX,ss.baseY+1);
-      ctx.fillStyle='rgba(255,221,0,0.8)'; ctx.font=uiFont(11);
-      ctx.fillText(`${Math.floor(supR*100)}%`,ss.baseX,ss.baseY+ss.baseRadius+13);
+      ctx.fillStyle='rgba(255,221,0,0.8)'; ctx.font=uiFont(14);
+      ctx.fillText(`${Math.floor(supR*100)}%`,ss.baseX,ss.baseY+ss.baseRadius+18);
     }
     ctx.restore();
 
@@ -5001,20 +5002,20 @@ class Game {
       ctx.fillStyle='rgba(20,60,20,0.55)';
       ctx.beginPath(); ctx.arc(gb.x,gb.y,gb.r,0,TAU); ctx.fill();
       ctx.shadowBlur=0;
-      ctx.strokeStyle='#4cd137'; ctx.lineWidth=3;
+      ctx.strokeStyle='#4cd137'; ctx.lineWidth=5;
       ctx.beginPath(); ctx.arc(gb.x,gb.y,gb.r,0,TAU); ctx.stroke();
-      ctx.font=uiFont(24); ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.font=uiFont(34); ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('💡',gb.x,gb.y+1);
     } else {
       ctx.fillStyle='rgba(0,0,0,0.28)';
       ctx.beginPath(); ctx.arc(gb.x,gb.y,gb.r,0,TAU); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=3;
+      ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=5;
       ctx.beginPath(); ctx.arc(gb.x,gb.y,gb.r,0,TAU); ctx.stroke();
-      ctx.strokeStyle='#4cd137'; ctx.lineWidth=3;
+      ctx.strokeStyle='#4cd137'; ctx.lineWidth=5;
       ctx.beginPath();
       ctx.arc(gb.x,gb.y,gb.r,-Math.PI/2,-Math.PI/2+TAU*(1-p.gadgetCd/900));
       ctx.stroke();
-      ctx.globalAlpha=0.4; ctx.font=uiFont(24);
+      ctx.globalAlpha=0.4; ctx.font=uiFont(34);
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('💡',gb.x,gb.y+1);
     }
@@ -5024,14 +5025,16 @@ class Game {
     const ab=this.autoBtn;
     ctx.save();
     const apulse=0.5+0.5*Math.sin(this.frameCount*0.18);
-    ctx.shadowColor='#00eeff'; ctx.shadowBlur=ab._pressed?18:6+6*apulse;
+    ctx.shadowColor='#00eeff'; ctx.shadowBlur=ab._pressed?22:8+8*apulse;
     ctx.fillStyle=ab._pressed?'rgba(0,200,230,0.55)':'rgba(0,40,60,0.50)';
     ctx.beginPath(); ctx.arc(ab.x,ab.y,ab.r,0,TAU); ctx.fill();
     ctx.shadowBlur=0;
-    ctx.strokeStyle=ab._pressed?'#ffffff':'#00eeff'; ctx.lineWidth=ab._pressed?3:2.5;
+    ctx.strokeStyle=ab._pressed?'#ffffff':'#00eeff'; ctx.lineWidth=ab._pressed?5:4;
     ctx.beginPath(); ctx.arc(ab.x,ab.y,ab.r,0,TAU); ctx.stroke();
-    ctx.font=uiFont(26); ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.font=uiFont(38); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('🎯',ab.x,ab.y+1);
+    ctx.fillStyle='rgba(0,238,255,0.7)'; ctx.font=uiFont(14);
+    ctx.fillText('AUTO',ab.x,ab.y+ab.r+14);
     ctx.restore();
   }
 
