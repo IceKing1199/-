@@ -90,6 +90,14 @@ const BOX_HP = 1900, CRATE_HP = 2900;
 
 let game = null; // global singleton, set on load
 
+// Номер ряда дробины в шахматном залпе: крайние впереди, центр сзади
+// (count=5, rows=3 → [0,1,2,1,0])
+function rowPattern(i, count, rows) {
+  const mid=(count-1)/2;
+  if (mid<=0) return 0;
+  return Math.round((rows-1)*(1-Math.abs(i-mid)/mid));
+}
+
 const IS_TOUCH = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
 
 const GameState = { MENU: 'menu', PLAYING: 'playing', GAME_OVER: 'gameOver' };
@@ -99,22 +107,23 @@ const BRAWLER_CONFIGS = {
   // Балансные статы: выровнены по винрейту в симуляциях матчей
   // (см. историю коммитов); за основу взяты значения Brawl Stars level-1.
   shelly: {
-    name: 'Shelly', hp: 3600, speed: 2.3, damage: 210, range: 250,
+    name: 'Shelly', hp: 3600, speed: 2.3, damage: 255, range: 220,
     reload: 102, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 5, spread: 0.45,
-    falloff: true,
+    falloff: true, bulletStyle: 'pellet', pelletRows: 3,
     radius: 18, color: '#ff69b4', symbol: 'S',
     superDamage: 320, superSpread: 0.7, superBullets: 9, superChargeRate: 0.10
   },
   colt: {
     name: 'Colt', hp: 2800, speed: 2.3, damage: 225, range: 320,
     reload: 95, attackCooldown: 30, bulletSpeed: 9, bulletCount: 6, spread: 0,
+    bulletStyle: 'tracer',
     radius: 16, color: '#4169e1', symbol: 'C',
     superDamage: 255, superBurstCount: 12, superChargeRate: 0.085
   },
   bull: {
     name: 'Bull', hp: 5000, speed: 2.7, damage: 320, range: 170,
     reload: 80, attackCooldown: 24, bulletSpeed: 5.5, bulletCount: 5, spread: 0.4,
-    falloff: true,
+    falloff: true, bulletStyle: 'pellet',
     radius: 22, color: '#8b0000', symbol: 'B',
     superDamage: 680, superChargeRate: 0.12,
     chargeSpeed: 10, chargeDuration: 30
@@ -122,34 +131,34 @@ const BRAWLER_CONFIGS = {
   nita: {
     name: 'Nita', hp: 3800, speed: 2.3, damage: 500, range: 260,
     reload: 80, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 1, spread: 0,
-    piercesEnemies: true, bulletRadius: 7, // her shockwave rolls through everyone
+    piercesEnemies: true, bulletRadius: 7, bulletStyle: 'wave', // her shockwave rolls through everyone
     radius: 17, color: '#8b4513', symbol: 'N',
     superDamage: 0, superChargeRate: 0.09,
     bearHp: 3400, bearDamage: 320, bearSpeed: 2.0,
     bearRadius: 20, bearDuration: 900
   },
   edgar: {
-    name: 'Edgar', hp: 4800, speed: 2.9, damage: 520, range: 110,
+    name: 'Edgar', hp: 4600, speed: 2.9, damage: 520, range: 110,
     reload: 45, attackCooldown: 12, bulletSpeed: 14, bulletCount: 1, spread: 0,
-    bulletRadius: 10,
+    bulletRadius: 10, bulletStyle: 'punch',
     radius: 16, color: '#6c5ce7', symbol: 'E',
-    lifesteal: 0.7,
+    lifesteal: 0.6,
     superDamage: 0, superChargeRate: 0.16,
     jumpRange: 240, jumpDuration: 36
   },
   spike: {
-    name: 'Spike', hp: 3200, speed: 2.2, damage: 310, range: 280,
-    reload: 90, attackCooldown: 25, bulletSpeed: 7, bulletCount: 1, spread: 0,
+    name: 'Spike', hp: 3200, speed: 2.2, damage: 260, range: 280,
+    reload: 90, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 1, spread: 0,
     bulletRadius: 8,
     radius: 17, color: '#4eb54e', symbol: 'Sp',
-    spikeExplode: true, spikeDamage: 280, spikeCount: 6,
-    superDamage: 0, superChargeRate: 0.11,
-    superSpikeCount: 8, superSlowR: 90, superSlowDur: 180
+    spikeExplode: true, spikeDamage: 215, spikeCount: 6,
+    superDamage: 0, superChargeRate: 0.08,
+    superSpikeCount: 8, superSlowR: 60, superSlowDur: 120, superThrowRange: 260
   },
   crow: {
     name: 'Crow', hp: 2800, speed: 2.65, damage: 170, range: 340,
     reload: 85, attackCooldown: 20, bulletSpeed: 9, bulletCount: 3, spread: 0.22,
-    bulletRadius: 5,
+    bulletRadius: 5, bulletStyle: 'dagger',
     radius: 16, color: '#2d3436', symbol: 'Cr',
     poisonDps: 110, poisonDuration: 180,
     superDamage: 0, superChargeRate: 0.09,
@@ -158,7 +167,7 @@ const BRAWLER_CONFIGS = {
   mortis: {
     name: 'Mortis', hp: 3600, speed: 2.1, damage: 690, range: 140,
     reload: 55, attackCooldown: 18, bulletSpeed: 15, bulletCount: 1, spread: 0,
-    bulletRadius: 12,
+    bulletRadius: 12, bulletStyle: 'shovel',
     radius: 18, color: '#6d4c99', symbol: 'Mo',
     dashOnShoot: 65,
     superDamage: 0, superChargeRate: 0.13,
@@ -848,7 +857,7 @@ class Bullet {
     this.x = x; this.y = y;
     this.startX = x; this.startY = y;
     this.angle = angle;
-    this.speed = config.bulletSpeed;
+    this.speed = config.bulletSpeed*(opts.speedMult||1);
     this.isSuper = !!opts.isSuper;
     this.damage = opts.damage !== undefined ? opts.damage
                 : (this.isSuper ? (config.superDamage||config.damage) : config.damage);
@@ -863,6 +872,7 @@ class Bullet {
     this.ownerId = ownerId;
     this.radius = config.bulletRadius || 4;
     this.color = config.color;
+    this.style = config.bulletStyle || 'ball';
     this.active = true;
     this.isCactus = !!opts.isCactus;
     this.poisonPayload = opts.poisonPayload || null; // {dps, duration} applied on hit
@@ -892,34 +902,86 @@ class Bullet {
   }
   render(ctx, cx, cy) {
     const sx = this.x-cx, sy = this.y-cy;
+    const st = this.isCactus ? 'cactus' : this.style;
     ctx.save();
-    ctx.fillStyle = this.isSuper ? '#fff' : this.color;
-    ctx.shadowColor = this.color;
-    ctx.shadowBlur  = this.isSuper ? 12 : 6;
-    if (this.isCactus) {
-      // draw as spiky ball
-      ctx.fillStyle='#4eb54e';
-      ctx.beginPath(); ctx.arc(sx,sy,this.radius+1,0,TAU); ctx.fill();
-      ctx.strokeStyle='#357a2e'; ctx.lineWidth=2;
-      for (let i=0;i<6;i++) {
-        const a=i*TAU/6;
-        ctx.beginPath();
-        ctx.moveTo(sx+Math.cos(a)*this.radius,sy+Math.sin(a)*this.radius);
-        ctx.lineTo(sx+Math.cos(a)*(this.radius+4),sy+Math.sin(a)*(this.radius+4));
-        ctx.stroke();
+    switch (st) {
+      case 'pellet': // картечь: маленькие раскалённые дробины
+        ctx.fillStyle = this.isSuper ? '#ffd34d' : '#ff9a3d';
+        dot(ctx, sx, sy, Math.max(this.radius-0.5, 3));
+        ctx.fillStyle='rgba(255,255,255,0.55)';
+        dot(ctx, sx-1, sy-1, 1.3);
+        break;
+      case 'tracer': { // пуля-трассер, вытянута по полёту
+        ctx.translate(sx,sy); ctx.rotate(this.angle);
+        const len=this.radius*4+10;
+        ctx.shadowColor=this.color; ctx.shadowBlur=this.isSuper?10:6;
+        ctx.fillStyle=this.isSuper?'#fff':this.color;
+        capsule(ctx,-len/2,0,len/2,0,this.radius*0.9); ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.fillStyle='#fff'; dot(ctx,len/2-1,0,this.radius*0.6);
+        break;
       }
-    } else {
-      ctx.beginPath();
-      ctx.arc(sx, sy, this.isSuper?this.radius+1:this.radius, 0, TAU);
-      ctx.fill();
+      case 'wave': { // ударная волна Ниты
+        ctx.translate(sx,sy); ctx.rotate(this.angle);
+        ctx.strokeStyle=this.color; ctx.lineWidth=4; ctx.lineCap='round';
+        ctx.globalAlpha=0.85;
+        ctx.beginPath(); ctx.arc(0,0,this.radius+5,-1.1,1.1); ctx.stroke();
+        ctx.lineWidth=2.5; ctx.globalAlpha=0.5;
+        ctx.beginPath(); ctx.arc(-7,0,this.radius+1,-1.0,1.0); ctx.stroke();
+        break;
+      }
+      case 'punch':
+      case 'shovel': { // свуш ближнего удара
+        ctx.translate(sx,sy); ctx.rotate(this.angle);
+        const big=st==='shovel';
+        ctx.strokeStyle=big?'#b388ff':'rgba(255,255,255,0.95)';
+        ctx.lineWidth=big?5:4; ctx.lineCap='round';
+        ctx.globalAlpha=0.85;
+        ctx.beginPath(); ctx.arc(-4,0,this.radius+(big?6:2),-0.9,0.9); ctx.stroke();
+        ctx.globalAlpha=0.35;
+        ctx.beginPath(); ctx.arc(-10,0,this.radius+(big?11:6),-0.7,0.7); ctx.stroke();
+        break;
+      }
+      case 'dagger': { // нож Ворона
+        ctx.translate(sx,sy); ctx.rotate(this.angle);
+        ctx.fillStyle='#cfd8e3';
+        ctx.beginPath();
+        ctx.moveTo(this.radius*2.6,0);
+        ctx.lineTo(-this.radius*1.4, this.radius*0.95);
+        ctx.lineTo(-this.radius*0.6,0);
+        ctx.lineTo(-this.radius*1.4,-this.radius*0.95);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle='rgba(0,0,0,0.3)'; ctx.lineWidth=1; ctx.stroke();
+        break;
+      }
+      case 'cactus': // колючий шар Спайка
+        ctx.fillStyle='#4eb54e';
+        ctx.beginPath(); ctx.arc(sx,sy,this.radius+1,0,TAU); ctx.fill();
+        ctx.strokeStyle='#357a2e'; ctx.lineWidth=2;
+        for (let i=0;i<6;i++) {
+          const a=i*TAU/6;
+          ctx.beginPath();
+          ctx.moveTo(sx+Math.cos(a)*this.radius,sy+Math.sin(a)*this.radius);
+          ctx.lineTo(sx+Math.cos(a)*(this.radius+4),sy+Math.sin(a)*(this.radius+4));
+          ctx.stroke();
+        }
+        break;
+      default:
+        ctx.fillStyle = this.isSuper ? '#fff' : this.color;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur  = this.isSuper ? 12 : 6;
+        ctx.beginPath();
+        ctx.arc(sx, sy, this.isSuper?this.radius+1:this.radius, 0, TAU);
+        ctx.fill();
+        ctx.shadowBlur=0;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(sx-Math.cos(this.angle)*8, sy-Math.sin(this.angle)*8);
+        ctx.lineTo(sx, sy);
+        ctx.stroke();
     }
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth = 2;
-    ctx.globalAlpha = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(sx-Math.cos(this.angle)*8, sy-Math.sin(this.angle)*8);
-    ctx.lineTo(sx, sy);
-    ctx.stroke();
     ctx.restore();
   }
 }
@@ -1104,6 +1166,10 @@ class Brawler {
     this.framesSinceDamage=9999;
     this.isDashing=false; this.dashTimer=0; this.dashAngle=0;
     this.dashHitIds=null;
+    // Выпад Мортиса + чередование рук/взмахов в анимациях
+    this.lungeTimer=0; this.lungeDur=8; this.lungeAngle=0; this.lungeStep=0;
+    this.swingCount=0;
+    this.superAimDist=null; // желаемая дальность ульты (стик/мышь/ИИ)
     // Edgar/Crow jump
     this.isJumping=false; this.jumpTimer=0; this.jumpDur=1;
     this.jumpFrom=null; this.jumpTo=null;
@@ -1165,6 +1231,7 @@ class Brawler {
     this.inBush=tileMap.inBush(this.x,this.y);
     if (this.isJumping) this.updateJump();
     else if (this.isDashing) this.updateDash();
+    else if (this.lungeTimer>0) this.updateLunge();
     else this.updateMovement();
     // Walk animation driven by distance actually travelled — keeps
     // step rate honest across speeds and during Bull's dash.
@@ -1222,7 +1289,7 @@ class Brawler {
     const ma=Math.atan2(this.moveY,this.moveX);
     let slowMult=1;
     if (game&&game.slowZones) for (const sz of game.slowZones) {
-      if (dist(this.x,this.y,sz.x,sz.y)<sz.r) { slowMult=0.5; break; }
+      if (dist(this.x,this.y,sz.x,sz.y)<sz.r) { slowMult=0.65; break; }
     }
     if (this.poisonSlowTimer>0) slowMult=Math.min(slowMult,0.8);
     const sp=this.speed*(this.speedBoostTimer>0?1.3:1)*slowMult;
@@ -1266,16 +1333,23 @@ class Brawler {
                    isSuper:false, damage:dmg, range:this.config.range };
       return [];
     }
+    this.swingCount++;
     const bullets=[];
     const poisonPayload = this.config.poisonDps ? {dps:this.config.poisonDps, duration:this.config.poisonDuration} : null;
     if (this.config.spread>0) {
       const step=this.config.spread/(this.config.bulletCount-1);
       const start=this.angle-this.config.spread/2;
-      for (let i=0;i<this.config.bulletCount;i++)
+      for (let i=0;i<this.config.bulletCount;i++) {
+        // Шахматный залп (Шелли): крайние дробины в первом ряду,
+        // центральные отстают — облако картечи в 3 волны, как в BS
+        const row=this.config.pelletRows ? rowPattern(i,this.config.bulletCount,this.config.pelletRows) : 0;
+        const off=this.radius+5-row*12;
         bullets.push(new Bullet(
-          this.x+Math.cos(this.angle)*(this.radius+5),
-          this.y+Math.sin(this.angle)*(this.radius+5),
-          start+step*i, this.config, this.id, {damage:dmg, poisonPayload}));
+          this.x+Math.cos(this.angle)*off,
+          this.y+Math.sin(this.angle)*off,
+          start+step*i, this.config, this.id,
+          {damage:dmg, poisonPayload, speedMult:1-row*0.06}));
+      }
     } else {
       bullets.push(new Bullet(
         this.x+Math.cos(this.angle)*(this.radius+5),
@@ -1285,9 +1359,23 @@ class Brawler {
          isCactus: !!this.config.spikeExplode,
          poisonPayload}));
     }
-    // Mortis: dash forward after each swing
-    if (this.config.dashOnShoot) this.dashForward(this.config.dashOnShoot);
+    // Mortis: плавный выпад вперёд на каждый взмах (8 кадров)
+    if (this.config.dashOnShoot) {
+      this.lungeDur=8; this.lungeTimer=8;
+      this.lungeAngle=this.angle;
+      this.lungeStep=this.config.dashOnShoot/8;
+    }
     return bullets;
+  }
+  // Шаг выпада: движение с проверкой стен, без управления игроком
+  updateLunge() {
+    this.lungeTimer--;
+    const nx=this.x+Math.cos(this.lungeAngle)*this.lungeStep;
+    const ny=this.y+Math.sin(this.lungeAngle)*this.lungeStep;
+    if (tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove)) { this.lungeTimer=0; return; }
+    if (nx<this.radius||nx>ARENA_WIDTH-this.radius||
+        ny<this.radius||ny>ARENA_HEIGHT-this.radius) { this.lungeTimer=0; return; }
+    this.x=nx; this.y=ny;
   }
   dashForward(px) {
     const steps=Math.ceil(px/8);
@@ -1300,21 +1388,48 @@ class Brawler {
       this.x=nx; this.y=ny;
     }
   }
-  useSuper() {
+  // Прыжок в ближайшую свободную точку на дистанции ≤ dist по текущему углу
+  startJump(dist) {
+    const cfg=this.config;
+    let lx=this.x, ly=this.y;
+    for (let d=dist; d>=0; d-=15) {
+      const px=this.x+Math.cos(this.angle)*d;
+      const py=this.y+Math.sin(this.angle)*d;
+      if (px<this.radius||px>ARENA_WIDTH-this.radius||
+          py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
+      if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) {
+        lx=px; ly=py; break;
+      }
+    }
+    this.isJumping=true;
+    this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
+    this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+  }
+  useSuper(opts={}) {
     if (this.superCharge<this.maxSuperCharge||!this.alive) return null;
+    // Полный гиперзаряд: супер автоматически усилен (раньше гипер
+    // копился, но никогда не срабатывал)
+    if (this.hyperCharge>=this.maxHyperCharge) return this.useHyperSuper(opts);
     this.superCharge=0; this.revealTimer=60;
+    // Дальность ульты: стик/мышь/ИИ (только прыжки и бросок её используют)
+    const aimDist=opts.dist ?? this.superAimDist ?? Infinity;
+    this.superAimDist=null;
     const result={bullets:[], bear:null};
     switch(this.type) {
       case 'shelly': {
         const dmg=this.config.superDamage*this.damageMult;
         const step=this.config.superSpread/(this.config.superBullets-1);
         const start=this.angle-this.config.superSpread/2;
-        for (let i=0;i<this.config.superBullets;i++)
+        for (let i=0;i<this.config.superBullets;i++) {
+          const row=rowPattern(i,this.config.superBullets,this.config.pelletRows||1);
+          const off=this.radius+5-row*12;
           result.bullets.push(new Bullet(
-            this.x+Math.cos(this.angle)*(this.radius+5),
-            this.y+Math.sin(this.angle)*(this.radius+5),
+            this.x+Math.cos(this.angle)*off,
+            this.y+Math.sin(this.angle)*off,
             start+step*i, this.config, this.id,
-            { isSuper:true, damage:dmg, range:this.config.range*1.3, knockback:true }));
+            { isSuper:true, damage:dmg, range:this.config.range*1.3,
+              knockback:true, speedMult:1-row*0.06 }));
+        }
         break;
       }
       case 'colt':
@@ -1344,54 +1459,24 @@ class Brawler {
         break;
       }
       case 'edgar': {
-        const cfg=this.config;
-        let lx=this.x, ly=this.y;
-        for (let d=cfg.jumpRange; d>=0; d-=15) {
-          const px=this.x+Math.cos(this.angle)*d;
-          const py=this.y+Math.sin(this.angle)*d;
-          if (px<this.radius||px>ARENA_WIDTH-this.radius||
-              py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
-          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) {
-            lx=px; ly=py; break;
-          }
-        }
-        this.isJumping=true;
-        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
-        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        this.startJump(Math.min(aimDist,this.config.jumpRange));
         break;
       }
       case 'crow': {
         const cfg=this.config;
-        let lx=this.x, ly=this.y;
-        for (let d=cfg.jumpRange; d>=0; d-=15) {
-          const px=this.x+Math.cos(this.angle)*d;
-          const py=this.y+Math.sin(this.angle)*d;
-          if (px<this.radius||px>ARENA_WIDTH-this.radius||
-              py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
-          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) {
-            lx=px; ly=py; break;
-          }
-        }
-        this.isJumping=true;
-        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
-        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        this.startJump(Math.min(aimDist,cfg.jumpRange));
         // on landing: 6 poison daggers in a ring
         this.jumpLandBullets={count:6, damage:cfg.damage*this.damageMult,
           poisonPayload:{dps:cfg.poisonDps, duration:cfg.poisonDuration}};
         break;
       }
       case 'spike': {
+        // Бросок гранаты-кактуса в прицельную точку (дальность настраивается)
         const cfg=this.config;
-        // 8 large spikes in a ring + create a slow zone
-        for (let i=0;i<cfg.superSpikeCount;i++) {
-          const a=i*TAU/cfg.superSpikeCount;
-          result.bullets.push(new Bullet(
-            this.x+Math.cos(a)*(this.radius+5),
-            this.y+Math.sin(a)*(this.radius+5),
-            a, this.config, this.id,
-            { isSuper:true, damage:cfg.spikeDamage*this.damageMult, range:200 }));
-        }
-        result.slowZone={x:this.x, y:this.y, r:cfg.superSlowR, timer:cfg.superSlowDur};
+        const d=Math.min(aimDist,cfg.superThrowRange);
+        result.lob=new LobProjectile(this.x, this.y,
+          this.x+Math.cos(this.angle)*d, this.y+Math.sin(this.angle)*d,
+          this.id, this.damageMult, false);
         break;
       }
       case 'mortis': {
@@ -1405,22 +1490,27 @@ class Brawler {
     }
     return result;
   }
-  useHyperSuper() {
+  useHyperSuper(opts={}) {
     if (this.hyperCharge<this.maxHyperCharge||!this.alive) return null;
     this.hyperCharge=0;
     this.superCharge=0; this.revealTimer=60;
+    const aimDist=opts.dist ?? this.superAimDist ?? Infinity;
+    this.superAimDist=null;
     const result={bullets:[], bear:null, bats:[], slowZone:null};
     switch(this.type) {
       case 'shelly': {
         const dmg=this.config.superDamage*this.damageMult;
         const step=this.config.superSpread/(this.config.superBullets-1);
         const start=this.angle-this.config.superSpread/2;
-        for (let i=0;i<this.config.superBullets;i++)
+        for (let i=0;i<this.config.superBullets;i++) {
+          const row=rowPattern(i,this.config.superBullets,this.config.pelletRows||1);
           result.bullets.push(new Bullet(
-            this.x+Math.cos(this.angle)*(this.radius+5),
-            this.y+Math.sin(this.angle)*(this.radius+5),
+            this.x+Math.cos(this.angle)*(this.radius+5-row*12),
+            this.y+Math.sin(this.angle)*(this.radius+5-row*12),
             start+step*i, this.config, this.id,
-            { isSuper:true, damage:dmg, range:this.config.range*1.3, knockback:true }));
+            { isSuper:true, damage:dmg, range:this.config.range*1.3,
+              knockback:true, speedMult:1-row*0.06 }));
+        }
         // Break 3×3 tiles of walls around the target
         const tx=Math.floor((this.x+Math.cos(this.angle)*180)/TILE);
         const ty=Math.floor((this.y+Math.sin(this.angle)*180)/TILE);
@@ -1464,45 +1554,22 @@ class Brawler {
       }
       case 'edgar': {
         const cfg=this.config;
-        let lx=this.x, ly=this.y;
-        for (let d=cfg.jumpRange; d>=0; d-=15) {
-          const px=this.x+Math.cos(this.angle)*d;
-          const py=this.y+Math.sin(this.angle)*d;
-          if (px<this.radius||px>ARENA_WIDTH-this.radius||py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
-          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) { lx=px; ly=py; break; }
-        }
-        this.isJumping=true;
-        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
-        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        this.startJump(Math.min(aimDist,cfg.jumpRange));
         // landing ring of 8 bullets
-        this.jumpLandBullets={count:8, damage:cfg.damage*this.damageMult, poisonPayload:null};
+        this.jumpLandBullets={count:8, damage:cfg.damage*0.7*this.damageMult, poisonPayload:null};
         break;
       }
       case 'spike': {
         const cfg=this.config;
-        for (let i=0;i<8;i++) {
-          const a=i*TAU/8;
-          result.bullets.push(new Bullet(
-            this.x+Math.cos(a)*(this.radius+5),
-            this.y+Math.sin(a)*(this.radius+5),
-            a, this.config, this.id,
-            { isSuper:true, damage:cfg.spikeDamage*this.damageMult, range:200 }));
-        }
-        result.slowZone={x:this.x, y:this.y, r:140, timer:180};
+        const d=Math.min(aimDist,cfg.superThrowRange);
+        result.lob=new LobProjectile(this.x, this.y,
+          this.x+Math.cos(this.angle)*d, this.y+Math.sin(this.angle)*d,
+          this.id, this.damageMult, true);
         break;
       }
       case 'crow': {
         const cfg=this.config;
-        let lx=this.x, ly=this.y;
-        for (let d=cfg.jumpRange; d>=0; d-=15) {
-          const px=this.x+Math.cos(this.angle)*d;
-          const py=this.y+Math.sin(this.angle)*d;
-          if (px<this.radius||px>ARENA_WIDTH-this.radius||py<this.radius||py>ARENA_HEIGHT-this.radius) continue;
-          if (!tileMap.circleHitsSolid(px,py,this.radius,tileMap.isSolidForMove)) { lx=px; ly=py; break; }
-        }
-        this.isJumping=true;
-        this.jumpDur=cfg.jumpDuration; this.jumpTimer=cfg.jumpDuration;
-        this.jumpFrom={x:this.x,y:this.y}; this.jumpTo={x:lx,y:ly};
+        this.startJump(Math.min(aimDist,cfg.jumpRange));
         this.jumpLandBullets={count:12, damage:cfg.damage*this.damageMult,
           poisonPayload:{dps:cfg.poisonDps, duration:300}}; // longer hyper poison
         break;
@@ -1869,7 +1936,7 @@ class BotAI {
       case 'mortis': ok = ed<300; break;
     }
     if (!ok && me.hp<0.25*me.maxHp && ed<250) ok=true;
-    if (ok) me.angle=angTo;
+    if (ok) { me.angle=angTo; me.superAimDist=ed; } // прыжок/бросок точно в цель
     return ok;
   }
   fight(enemy, ed) {
@@ -2078,6 +2145,73 @@ const Progress = {
     return Object.values(this.load().trophies).reduce((s,v)=>s+(v||0),0);
   }
 };
+
+// ── LOB (граната-кактус Спайка: летит по дуге в точку броска) ─
+class LobProjectile {
+  constructor(x, y, tx, ty, ownerId, damageMult, isHyper) {
+    this.from={x,y}; this.to={x:tx,y:ty};
+    this.x=x; this.y=y; this.height=0;
+    this.t=0; this.dur=Math.max(20, Math.round(dist(x,y,tx,ty)/7));
+    this.ownerId=ownerId; this.damageMult=damageMult; this.isHyper=isHyper;
+    this.active=true;
+  }
+  update() {
+    this.t++;
+    const k=this.t/this.dur;
+    this.x=lerp(this.from.x,this.to.x,k);
+    this.y=lerp(this.from.y,this.to.y,k);
+    this.height=Math.sin(k*Math.PI)*110;
+    if (this.t>=this.dur) { this.active=false; this.explode(); }
+  }
+  explode() {
+    if (!game) return;
+    const cfg=BRAWLER_CONFIGS.spike;
+    // Одноразовый урон по зоне приземления (вместо стопки шипов в упор)
+    const aoeDmg=cfg.spikeDamage*this.damageMult;
+    for (const b of game.brawlers) {
+      if (b.id===this.ownerId||!b.alive||b.isJumping) continue;
+      if (dist(this.x,this.y,b.x,b.y)>55+b.radius) continue;
+      const died=b.takeDamage(aoeDmg,this.ownerId);
+      game.addPopup(b.x,b.y-b.radius-16,String(Math.round(aoeDmg)),'#ffdd55');
+      if (b.isPlayer) game.addShake(5);
+      const att=game.brawlers.find(x=>x.id===this.ownerId);
+      if (att&&att.alive) att.chargeSuper(aoeDmg);
+      if (died) game.onBrawlerDeath(b,this.ownerId);
+    }
+    // Шипы разлетаются наружу (контроль зоны, не бурст в упор)
+    const n=this.isHyper?10:cfg.superSpikeCount;
+    for (let i=0;i<n;i++) {
+      const a=i*TAU/n;
+      game.bullets.push(new Bullet(
+        this.x+Math.cos(a)*26, this.y+Math.sin(a)*26, a, cfg, this.ownerId,
+        { isSuper:true, damage:cfg.spikeDamage*this.damageMult,
+          range:this.isHyper?160:120 }));
+    }
+    game.slowZones.push({ x:this.x, y:this.y,
+      r:this.isHyper?140:cfg.superSlowR,
+      timer:this.isHyper?180:cfg.superSlowDur });
+    game.fx.push(new RingFX(this.x,this.y,'#4eb54e',70));
+    game.spawnParticles(this.x,this.y,'#4eb54e',14);
+    game.addShake(2);
+    game.sound.play('boxBreak');
+  }
+  render(ctx) { // 2D fallback: шар с тенью, высота — смещением вверх
+    shadowEllipse(ctx,this.x,this.y,10,5);
+    ctx.save();
+    ctx.translate(this.x,this.y-this.height*0.6);
+    ctx.rotate(this.t*0.25);
+    ctx.fillStyle='#4eb54e'; dot(ctx,0,0,9);
+    ctx.strokeStyle='#357a2e'; ctx.lineWidth=2;
+    for (let i=0;i<6;i++) {
+      const a=i*TAU/6;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a)*9,Math.sin(a)*9);
+      ctx.lineTo(Math.cos(a)*13,Math.sin(a)*13);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
 
 // ── POWER CUBE ───────────────────────────────────────────────
 class PowerCube {
@@ -2798,12 +2932,28 @@ class CharacterRenderer3D {
     // ×1.28: визуальный размер чуть больше хитбокса (как в Brawl Stars)
     md.group.scale.setScalar((1-0.6*(b.spawnTimer/24))*1.28);
     md.rig.position.y=Math.abs(Math.sin(b.walkPhase))*2.4*b.movingAmp;
-    md.rig.rotation.z=-0.07*b.movingAmp-(b.isDashing?0.3:0);
+    // Наклон вперёд: бег / рывок Булла / выпад Мортиса
+    md.rig.rotation.z=-0.07*b.movingAmp-(b.isDashing?0.3:0)-(b.lungeTimer>0?0.38:0);
     const R=md.R;
     const sw=Math.sin(b.walkPhase)*0.14*R*b.movingAmp;
     md.legL.position.y=R*0.22+Math.max(0,sw);
     md.legR.position.y=R*0.22+Math.max(0,-sw);
-    if (md.gun) md.gun.position.x=md.gunX-(b.shootFlash/4)*0.28*R;
+    if (md.gun) {
+      md.gun.position.x=md.gunX-(b.shootFlash/4)*0.28*R;
+      if (b.type==='mortis') {
+        // Горизонтальный взмах лопаты на протяжении выпада, стороны чередуются
+        const k=b.lungeTimer>0 ? 1-b.lungeTimer/b.lungeDur
+              : (b.shootFlash>0 ? 1-b.shootFlash/4 : -1);
+        const sign=(b.swingCount%2)?1:-1;
+        md.gun.rotation.y = k>=0 ? sign*lerp(-1.0,0.8,k) : 0;
+      } else if (b.type==='edgar'&&md.gun.children.length>=2) {
+        // Джебы: бьющий кулак выстреливает вперёд, второй уходит в замах
+        const ext=b.shootFlash>0 ? Math.sin((1-b.shootFlash/4)*Math.PI) : 0;
+        const lead=md.gun.children[b.swingCount%2], back=md.gun.children[(b.swingCount+1)%2];
+        lead.position.x=R*(0.5+0.65*ext);
+        back.position.x=R*(0.35-0.25*ext);
+      }
+    }
     this.setFlash(md, b.flashTimer>0);
   }
 
@@ -2853,7 +3003,7 @@ class CharacterRenderer3D {
 class EffectsRenderer3D {
   constructor(scene, charR) {
     this.scene=scene; this.charR=charR;
-    this.bullets=new Map(); this.cubes=new Map();
+    this.bullets=new Map(); this.cubes=new Map(); this.lobsM=new Map();
     this.rings=new Map(); this.zones=new Map(); this.deaths=new Map();
     this._mark=new Set();
     this._matCache=new Map(); // basic-материалы по цвету (для пуль/кубов)
@@ -2878,6 +3028,16 @@ class EffectsRenderer3D {
     if (!m) { m=new THREE.MeshBasicMaterial({color:new THREE.Color(color)}); this._matCache.set(color,m); }
     return m;
   }
+  basicMatT(color, opacity) {
+    const key=color+'_t'+opacity;
+    let m=this._matCache.get(key);
+    if (!m) {
+      m=new THREE.MeshBasicMaterial({color:new THREE.Color(color),
+        transparent:true, opacity, depthWrite:false});
+      this._matCache.set(key,m);
+    }
+    return m;
+  }
   col(c) {
     let v=this._colCache.get(c);
     if (!v) { v=new THREE.Color(); try{v.set(c);}catch(e){v.set('#ffffff');} this._colCache.set(c,v); }
@@ -2885,7 +3045,7 @@ class EffectsRenderer3D {
   }
 
   clear() {
-    for (const map of [this.bullets,this.cubes,this.rings,this.zones,this.deaths]) {
+    for (const map of [this.bullets,this.cubes,this.lobsM,this.rings,this.zones,this.deaths]) {
       for (const [,h] of map) { this.scene.remove(h.obj); if (h.dispose) h.dispose(); }
       map.clear();
     }
@@ -2912,16 +3072,64 @@ class EffectsRenderer3D {
   sync(game) {
     const t=game.frameCount;
 
-    // Пули
+    // Пули: форма по стилю атаки бравлера
     this.syncMap(this.bullets, game.bullets, b=>b.active,
       b=>{
-        const color=b.isSuper?'#ffffff':(b.isCactus?'#4eb54e':b.color);
-        const m=new THREE.Mesh(b.isCactus?G3.oct:G3.sphere, this.basicMat(color));
-        const r=Math.max(b.radius+(b.isSuper?2:1),5);
-        m.scale.setScalar(r);
+        const st=b.isCactus?'cactus':b.style;
+        const r=Math.max(b.radius,4), sup=b.isSuper;
+        let m;
+        switch (st) {
+          case 'pellet': // дробина
+            m=new THREE.Mesh(G3.sphere, this.basicMat(sup?'#ffd34d':'#ff9a3d'));
+            m.scale.setScalar(r+(sup?4:2.5));
+            break;
+          case 'tracer': // вытянутый трассер вдоль полёта
+            m=new THREE.Mesh(G3.sphere, this.basicMat(sup?'#ffffff':b.color));
+            m.scale.set(r*3.4,r*1.2,r*1.2);
+            break;
+          case 'wave': // приплюснутая прокатывающаяся волна
+            m=new THREE.Mesh(G3.sphere, this.basicMat(b.color));
+            m.scale.set(r*1.5,r*0.5,r*1.9);
+            break;
+          case 'punch': // белёсый свуш удара
+            m=new THREE.Mesh(G3.sphere, this.basicMatT('#f2f2f7',0.75));
+            m.scale.set(r*0.6,r*0.35,r*2.0);
+            break;
+          case 'shovel': // широкий взмах лопаты
+            m=new THREE.Mesh(G3.sphere, this.basicMatT('#b388ff',0.8));
+            m.scale.set(r*0.6,r*0.4,r*2.4);
+            break;
+          case 'dagger': // нож
+            m=new THREE.Mesh(G3.oct, this.basicMat('#cfd8e3'));
+            m.scale.set(r*2.6,r*0.6,r*0.6);
+            break;
+          case 'cactus':
+            m=new THREE.Mesh(G3.oct, this.basicMat('#4eb54e'));
+            m.scale.setScalar(r+3);
+            break;
+          default:
+            m=new THREE.Mesh(G3.sphere, this.basicMat(sup?'#ffffff':b.color));
+            m.scale.setScalar(Math.max(r+(sup?2:1),5));
+        }
+        return {obj:m, st};
+      },
+      (h,b)=>{
+        h.obj.position.set(b.x,26,b.y);
+        if (h.st==='cactus') h.obj.rotation.y+=0.2;
+        else h.obj.rotation.y=-b.angle;
+      });
+
+    // Граната-кактус Спайка: парабола до точки броска
+    this.syncMap(this.lobsM, game.lobs, l=>l.active,
+      ()=>{
+        const m=new THREE.Mesh(G3.oct, this.basicMat('#4eb54e'));
+        m.scale.setScalar(12);
         return {obj:m};
       },
-      (h,b)=>{ h.obj.position.set(b.x,26,b.y); if (b.isCactus) h.obj.rotation.y+=0.2; });
+      (h,l)=>{
+        h.obj.position.set(l.x, 16+l.height, l.y);
+        h.obj.rotation.y+=0.18; h.obj.rotation.x+=0.1;
+      });
 
     // Кубы силы
     this.syncMap(this.cubes, game.cubes, c=>c.active,
@@ -3010,7 +3218,7 @@ class Game {
     this.frameCount=0;
 
     this.brawlers=[]; this.bullets=[]; this.bears=[]; this.bats=[]; this.particles=[]; this.botAIs=[];
-    this.cubes=[]; this.slowZones=[];
+    this.cubes=[]; this.slowZones=[]; this.lobs=[];
     this.popups=[]; this.fx=[]; this.killFeed=[];
     this.shake={power:0,timer:0};
     this.countdown=0; this.goTimer=0;
@@ -3197,17 +3405,30 @@ class Game {
   releaseSuper(r) {
     if (!this.player||!this.player.alive) return;
     if (this.player.superCharge<this.player.maxSuperCharge) return;
+    const cfg=this.player.config;
+    const maxD=cfg.jumpRange||cfg.superThrowRange||cfg.range*1.5;
     if (r.wasTap) {
-      const cfg=this.player.config;
-      const a=this.autoAimAngle(cfg.jumpRange||cfg.range*1.5);
-      this.activatePlayerSuper(a!==null?a:this.player.angle);
+      // Тап = автоаим: прыжок/бросок точно в ближайшего врага
+      const t=this.autoAimTarget(maxD);
+      this.activatePlayerSuper(t?t.angle:this.player.angle, t?t.dist:maxD);
     } else if (r.magnitude>=0.3) {
-      this.activatePlayerSuper(r.angle);
+      // Дальность управляется отклонением стика
+      this.activatePlayerSuper(r.angle, this.superAimDistance(r.magnitude));
     }
     // released near the centre after dragging = cancel
   }
 
-  autoAimAngle(range) {
+  // Отклонение супер-стика (0.3..1) → дальность прыжка/броска
+  superAimDistance(magnitude) {
+    const cfg=this.player?this.player.config:null;
+    if (!cfg) return undefined;
+    const maxD=cfg.jumpRange||cfg.superThrowRange;
+    if (!maxD) return undefined;
+    const k=Math.min(1,Math.max(0,(magnitude-0.3)/0.65));
+    return lerp(80,maxD,k);
+  }
+
+  autoAimTarget(range) {
     if (!this.player) return null;
     let best=null, bd=Infinity;
     for (const b of this.brawlers) {
@@ -3216,7 +3437,11 @@ class Game {
       const d=dist(this.player.x,this.player.y,b.x,b.y);
       if (d<bd&&d<range) { bd=d; best=b; }
     }
-    return best ? Math.atan2(best.y-this.player.y, best.x-this.player.x) : null;
+    return best ? { angle:Math.atan2(best.y-this.player.y, best.x-this.player.x), dist:bd } : null;
+  }
+  autoAimAngle(range) {
+    const t=this.autoAimTarget(range);
+    return t?t.angle:null;
   }
 
   playerShoot() {
@@ -3245,7 +3470,7 @@ class Game {
     this.state=GameState.PLAYING;
     this.matchTimer=MATCH_DURATION; this.matchTimerDisplay=MATCH_DURATION;
     this.brawlers=[]; this.bullets=[]; this.bears=[]; this.bats=[]; this.particles=[]; this.botAIs=[];
-    this.cubes=[]; this.slowZones=[];
+    this.cubes=[]; this.slowZones=[]; this.lobs=[];
     this.popups=[]; this.fx=[]; this.killFeed=[];
     this.shake={power:0,timer:0};
     this.countdown=180; this.goTimer=0; // 3-2-1 countdown before the brawl
@@ -3287,17 +3512,21 @@ class Game {
     this.player.useGadget();
   }
 
-  activatePlayerSuper(angle) {
+  activatePlayerSuper(angle, dist) {
     if (!this.player||this.countdown>0||this.player.superCharge<this.player.maxSuperCharge) return;
     this.player.angle = (angle!==undefined)
       ? angle
       : Math.atan2(this.mouseWorld.y-this.player.y, this.mouseWorld.x-this.player.x);
-    const r=this.player.useSuper();
+    // Мышь: дальность прыжка/броска = расстояние до курсора
+    if (dist===undefined)
+      dist=Math.hypot(this.mouseWorld.x-this.player.x, this.mouseWorld.y-this.player.y);
+    const r=this.player.useSuper({dist});
     if (r) {
       if (r.bullets) this.bullets.push(...r.bullets);
       if (r.bear)    this.bears.push(r.bear);
       if (r.bats)    this.bats.push(...r.bats);
       if (r.slowZone) this.slowZones.push(r.slowZone);
+      if (r.lob)     this.lobs.push(r.lob);
       this.fx.push(new RingFX(this.player.x, this.player.y, '#ffdd00', 60));
       this.addShake(3);
       this.sound.play('super');
@@ -3496,6 +3725,7 @@ class Game {
           if (r.bear)           this.bears.push(r.bear);
           if (r.bats)           this.bats.push(...r.bats);
           if (r.slowZone)       this.slowZones.push(r.slowZone);
+          if (r.lob)            this.lobs.push(r.lob);
           this.fx.push(new RingFX(ai.brawler.x, ai.brawler.y, '#ffdd00', 60));
           this.sound.play('super');
         }
@@ -3577,6 +3807,8 @@ class Game {
     }
     this.bullets=this.bullets.filter(b=>b.active);
     this.bullets.push(...newBullets);
+    for (const l of this.lobs) l.update();
+    this.lobs=this.lobs.filter(l=>l.active);
     for (const b of this.bears) b.update(this.brawlers);
     this.bears=this.bears.filter(b=>b.active);
     // Bat update
@@ -4037,6 +4269,7 @@ class Game {
     this.renderTouchAim(ctx);
 
     for (const c of this.cubes)     c.render(ctx);
+    for (const l of this.lobs)      l.render(ctx);
     for (const b of this.bears)     b.render(ctx,0,0);
     for (const b of this.bats)      b.render(ctx,0,0);
     for (const p of this.particles) p.render(ctx,0,0);
@@ -4216,72 +4449,118 @@ class Game {
     this.renderScreenUI(ctx,w,h);
   }
 
-  // Прицельная линия тач-стиков в 3D-режиме (проекция концов на экран)
+  // Тач-прицел в 3D-режиме: широкая полоса/клин/круг приземления (BS-style)
   renderTouchAim3D(ctx,proj) {
     const p=this.player;
     if (!p||!p.alive||!this.touchAimMode) return;
     const stick=this.touchAimMode==='super'?this.superStick:this.attackStick;
     if (!stick.active||stick.magnitude<0.2) return;
     const isSuper=this.touchAimMode==='super';
-    const range=isSuper ? (p.config.jumpRange||p.config.range*1.3) : p.config.range;
-    const p0=proj(p.x,p.y,2);
-    const p1=proj(p.x+Math.cos(p.angle)*range, p.y+Math.sin(p.angle)*range, 2);
-    ctx.save();
-    ctx.strokeStyle=isSuper?'#ffdd00':'#ffffff';
-    ctx.lineWidth=isSuper?4:3;
-    ctx.globalAlpha=0.55;
-    ctx.setLineDash([10,8]);
-    ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle=isSuper?'#ffdd00':'#ffffff';
-    ctx.globalAlpha=0.4;
-    ctx.beginPath(); ctx.arc(p1.x,p1.y,isSuper?14:9,0,TAU); ctx.fill();
-    // Конус разброса — полигон по спроецированной дуге
-    const spread=isSuper?(p.config.superSpread||0):(p.config.spread||0);
-    if (spread>0) {
-      ctx.globalAlpha=0.18;
+    const cfg=p.config;
+    const col=isSuper?'255,221,0':'255,255,255';
+    const poly=pts=>{
       ctx.beginPath();
-      ctx.moveTo(p0.x,p0.y);
-      for (let i=0;i<=6;i++) {
-        const a=p.angle-spread/2+spread*i/6;
-        const pa=proj(p.x+Math.cos(a)*range, p.y+Math.sin(a)*range, 2);
-        ctx.lineTo(pa.x,pa.y);
+      pts.forEach((q,i)=>{ const v=proj(q.x,q.y,2); i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y); });
+      ctx.closePath();
+    };
+    const ring=(cx,cy,r)=>{
+      ctx.beginPath();
+      for (let i=0;i<=24;i++) {
+        const a=i/24*TAU;
+        const v=proj(cx+Math.cos(a)*r, cy+Math.sin(a)*r, 2);
+        i?ctx.lineTo(v.x,v.y):ctx.moveTo(v.x,v.y);
       }
-      ctx.closePath(); ctx.fill();
+      ctx.closePath();
+    };
+    ctx.save();
+    if (isSuper&&(cfg.jumpRange||cfg.superThrowRange)) {
+      // Прыжок/бросок: пунктир до точки + круг зоны приземления
+      const d=this.superAimDistance(stick.magnitude)||cfg.jumpRange||cfg.superThrowRange;
+      const ex=p.x+Math.cos(p.angle)*d, ey=p.y+Math.sin(p.angle)*d;
+      const p0=proj(p.x,p.y,2), p1=proj(ex,ey,2);
+      ctx.strokeStyle=`rgba(${col},0.7)`; ctx.lineWidth=3;
+      ctx.setLineDash([8,8]);
+      ctx.beginPath(); ctx.moveTo(p0.x,p0.y); ctx.lineTo(p1.x,p1.y); ctx.stroke();
+      ctx.setLineDash([]);
+      const zr=cfg.superThrowRange?(cfg.superSlowR||90):45;
+      ring(ex,ey,zr);
+      ctx.fillStyle=`rgba(${col},0.2)`; ctx.fill();
+      ctx.strokeStyle=`rgba(${col},0.9)`; ctx.lineWidth=3; ctx.stroke();
+      ring(ex,ey,10);
+      ctx.fillStyle=`rgba(${col},0.85)`; ctx.fill();
+    } else {
+      const range=isSuper?cfg.range*1.3:cfg.range;
+      const spread=isSuper?(cfg.superSpread||cfg.spread||0):(cfg.spread||0);
+      if (spread>0.04) {
+        // Клин разброса с заметной заливкой и яркими краями
+        const pts=[{x:p.x,y:p.y}];
+        for (let i=0;i<=8;i++) {
+          const a=p.angle-spread/2+spread*i/8;
+          pts.push({x:p.x+Math.cos(a)*range, y:p.y+Math.sin(a)*range});
+        }
+        poly(pts);
+        ctx.fillStyle=`rgba(${col},0.22)`; ctx.fill();
+        ctx.strokeStyle=`rgba(${col},0.75)`; ctx.lineWidth=2.5; ctx.stroke();
+      } else {
+        // Широкая полоса выстрела + ресикл на конце
+        const hw=(cfg.bulletRadius||4)+11;
+        const ca=Math.cos(p.angle+Math.PI/2)*hw, sa=Math.sin(p.angle+Math.PI/2)*hw;
+        const ex=p.x+Math.cos(p.angle)*range, ey=p.y+Math.sin(p.angle)*range;
+        poly([{x:p.x+ca,y:p.y+sa},{x:ex+ca,y:ey+sa},{x:ex-ca,y:ey-sa},{x:p.x-ca,y:p.y-sa}]);
+        ctx.fillStyle=`rgba(${col},0.22)`; ctx.fill();
+        ctx.strokeStyle=`rgba(${col},0.75)`; ctx.lineWidth=2.5; ctx.stroke();
+        ring(ex,ey,hw+5);
+        ctx.fillStyle=`rgba(${col},0.35)`; ctx.fill();
+        ctx.strokeStyle=`rgba(${col},0.8)`; ctx.lineWidth=2; ctx.stroke();
+      }
     }
     ctx.restore();
   }
 
-  // Aim guide while dragging the attack / super stick (world space)
+  // Aim guide while dragging the attack / super stick (world space, 2D fallback)
   renderTouchAim(ctx) {
     const p=this.player;
     if (!p||!p.alive||!this.touchAimMode) return;
     const stick=this.touchAimMode==='super'?this.superStick:this.attackStick;
     if (!stick.active||stick.magnitude<0.2) return;
     const isSuper=this.touchAimMode==='super';
-    const range=isSuper ? (p.config.jumpRange||p.config.range*1.3) : p.config.range;
-    const ex=p.x+Math.cos(p.angle)*range;
-    const ey=p.y+Math.sin(p.angle)*range;
+    const cfg=p.config;
+    const col=isSuper?'255,221,0':'255,255,255';
     ctx.save();
-    ctx.strokeStyle=isSuper?'#ffdd00':'#ffffff';
-    ctx.lineWidth=isSuper?4:3;
-    ctx.globalAlpha=0.55;
-    ctx.setLineDash([10,8]);
-    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(ex,ey); ctx.stroke();
-    ctx.setLineDash([]);
-    // End marker
-    ctx.fillStyle=isSuper?'#ffdd00':'#ffffff';
-    ctx.globalAlpha=0.4;
-    ctx.beginPath(); ctx.arc(ex,ey,isSuper?14:9,0,TAU); ctx.fill();
-    // Spread cone for spread weapons
-    const spread=isSuper?(p.config.superSpread||0):(p.config.spread||0);
-    if (spread>0) {
-      ctx.globalAlpha=0.18;
-      ctx.fillStyle=isSuper?'#ffdd00':'#ffffff';
-      ctx.beginPath();
-      ctx.moveTo(p.x,p.y);
-      ctx.arc(p.x,p.y,range,p.angle-spread/2,p.angle+spread/2);
-      ctx.closePath(); ctx.fill();
+    if (isSuper&&(cfg.jumpRange||cfg.superThrowRange)) {
+      const d=this.superAimDistance(stick.magnitude)||cfg.jumpRange||cfg.superThrowRange;
+      const ex=p.x+Math.cos(p.angle)*d, ey=p.y+Math.sin(p.angle)*d;
+      ctx.strokeStyle=`rgba(${col},0.7)`; ctx.lineWidth=3;
+      ctx.setLineDash([8,8]);
+      ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(ex,ey); ctx.stroke();
+      ctx.setLineDash([]);
+      const zr=cfg.superThrowRange?(cfg.superSlowR||90):45;
+      ctx.fillStyle=`rgba(${col},0.2)`;
+      ctx.beginPath(); ctx.arc(ex,ey,zr,0,TAU); ctx.fill();
+      ctx.strokeStyle=`rgba(${col},0.9)`; ctx.lineWidth=3; ctx.stroke();
+      ctx.fillStyle=`rgba(${col},0.85)`;
+      ctx.beginPath(); ctx.arc(ex,ey,8,0,TAU); ctx.fill();
+    } else {
+      const range=isSuper?cfg.range*1.3:cfg.range;
+      const spread=isSuper?(cfg.superSpread||cfg.spread||0):(cfg.spread||0);
+      if (spread>0.04) {
+        ctx.fillStyle=`rgba(${col},0.22)`;
+        ctx.beginPath();
+        ctx.moveTo(p.x,p.y);
+        ctx.arc(p.x,p.y,range,p.angle-spread/2,p.angle+spread/2);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle=`rgba(${col},0.75)`; ctx.lineWidth=2.5; ctx.stroke();
+      } else {
+        const hw=(cfg.bulletRadius||4)+11;
+        ctx.translate(p.x,p.y); ctx.rotate(p.angle);
+        ctx.fillStyle=`rgba(${col},0.22)`;
+        ctx.fillRect(0,-hw,range,hw*2);
+        ctx.strokeStyle=`rgba(${col},0.75)`; ctx.lineWidth=2.5;
+        ctx.strokeRect(0,-hw,range,hw*2);
+        ctx.fillStyle=`rgba(${col},0.35)`;
+        ctx.beginPath(); ctx.arc(range,0,hw+5,0,TAU); ctx.fill();
+        ctx.strokeStyle=`rgba(${col},0.8)`; ctx.lineWidth=2; ctx.stroke();
+      }
     }
     ctx.restore();
   }
