@@ -128,16 +128,17 @@ const CANVAS_HEIGHT = 600;
 const VIEW_ZOOM = 1.25;                 // camera zoom-in: smaller visible world = bigger characters
 const MATCH_DURATION = 180;             // fail-safe; matches end by elimination
 const TOTAL_PLAYERS = 8;                // 1 player + 7 bots
-const DIFFICULTIES  = ['noob','medium','hard','hellish','divine'];
-const DIFF_LABELS   = ['НУБЫ','СРЕДНИЕ','СЛОЖНЫЕ','АДСКИЕ','БОЖЕСТВЕННЫЕ'];
-const DIFF_COLORS   = ['#88cc44','#44aaff','#ff8844','#ff2244','#cc44ff'];
-// Per-difficulty BotAI params: det=vision, sm=shootRange×, rt=[reactionMin,Max frames], aim=angle error rad, ret=retreat HP ratio, sc=super chance
+const DIFFICULTIES  = ['noob','medium','hard','hellish','divine','galactic'];
+const DIFF_LABELS   = ['НУБЫ','СРЕДНИЕ','СЛОЖНЫЕ','АДСКИЕ','БОЖЕСТВЕННЫЕ','ГАЛАКТИЧЕСКИЕ'];
+const DIFF_COLORS   = ['#88cc44','#44aaff','#ff8844','#ff2244','#cc44ff','#ff33cc'];
+// Per-difficulty BotAI params: det=vision, sm=shootRange×, rt=[reactionMin,Max frames], aim=angle error rad, ret=retreat HP ratio, sc=super chance, hp/dmg=bot strength multipliers
 const BOT_PARAMS = [
-  {det:200, sm:0.58, rt:[28,42], aim:22*Math.PI/180, ret:0.20, sc:0.25}, // noob
-  {det:330, sm:0.78, rt:[12,22], aim:11*Math.PI/180, ret:0.26, sc:0.60}, // medium
-  {det:480, sm:0.93, rt:[5,10],  aim: 4*Math.PI/180, ret:0.32, sc:0.88}, // hard
-  {det:650, sm:1.00, rt:[2,5],   aim:1.5*Math.PI/180, ret:0.18, sc:1.0}, // hellish
-  {det:950, sm:1.06, rt:[1,2],   aim:0.4*Math.PI/180, ret:0.10, sc:1.0}, // divine
+  {det:200, sm:0.58, rt:[28,42], aim:22*Math.PI/180,  ret:0.20, sc:0.25, hp:1.0, dmg:1.0}, // noob
+  {det:330, sm:0.78, rt:[12,22], aim:11*Math.PI/180,  ret:0.26, sc:0.60, hp:1.0, dmg:1.0}, // medium
+  {det:480, sm:0.93, rt:[5,10],  aim: 4*Math.PI/180,  ret:0.32, sc:0.88, hp:1.0, dmg:1.0}, // hard
+  {det:820, sm:1.06, rt:[1,3],   aim:0.8*Math.PI/180, ret:0.15, sc:1.0,  hp:1.4, dmg:1.4}, // hellish
+  {det:1150,sm:1.14, rt:[0,1],   aim:0.2*Math.PI/180, ret:0.08, sc:1.0,  hp:2.0, dmg:2.0}, // divine
+  {det:2200,sm:1.30, rt:[0,0],   aim:0.0,             ret:0.02, sc:1.0,  hp:10,  dmg:10 }, // galactic (×10 — секретные)
 ];
 const TAU = Math.PI * 2;
 
@@ -1215,6 +1216,7 @@ class Brawler {
     this.color=this.config.color;
     this.maxAmmo=3; this.ammo=3; this.reloadTimer=0; this.shootCooldown=0;
     this.superCharge=0; this.maxSuperCharge=100;
+    this.dmgBuff=1; // bot strength multiplier (player stays 1)
     this.angle=0; this.moveX=0; this.moveY=0;
     this.flashTimer=0; this.shootFlash=0;
     this.alive=true; this.kills=0; this.placement=null;
@@ -1249,7 +1251,7 @@ class Brawler {
     this.walkPhase=0; this.movingAmp=0; this.spawnTimer=24;
     this.prevX=x; this.prevY=y;
   }
-  get damageMult() { return 1 + 0.1*this.cubes; }
+  get damageMult() { return (1 + 0.1*this.cubes) * this.dmgBuff; }
   update() {
     if (!this.alive) return;
     if (this.shootCooldown>0) this.shootCooldown--;
@@ -2298,8 +2300,9 @@ const Progress = {
   },
   hasBeatDiff(brawler, diff) {
     const d=this.load().diffWins;
-    if (diff==='hellish') return !!(d[brawler]&&d[brawler].hard);
-    if (diff==='divine')  return !!(d[brawler]&&d[brawler].hellish);
+    if (diff==='hellish')  return !!(d[brawler]&&d[brawler].hard);
+    if (diff==='divine')   return !!(d[brawler]&&d[brawler].hellish);
+    if (diff==='galactic') return !!(d[brawler]&&d[brawler].divine);
     return true; // noob/medium/hard always available
   }
 };
@@ -3691,11 +3694,15 @@ class Game {
     this.player=new Brawler('player',type,spawns[0].x,spawns[0].y,true);
     this.brawlers.push(this.player);
     const types=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
+    const diffIdx=DIFFICULTIES.indexOf(diff);
+    const bp=BOT_PARAMS[diffIdx]||BOT_PARAMS[1];
     for (let i=1;i<TOTAL_PLAYERS;i++) {
       const sp=spawns[i%spawns.length];
       const bot=new Brawler(`bot_${i}`,types[i%types.length],sp.x,sp.y,false);
+      if (bp.hp!==1) { bot.maxHp=Math.round(bot.config.hp*bp.hp); bot.hp=bot.maxHp; }
+      bot.dmgBuff=bp.dmg;
       this.brawlers.push(bot);
-      this.botAIs.push(new BotAI(bot, DIFFICULTIES.indexOf(diff)));
+      this.botAIs.push(new BotAI(bot, diffIdx));
     }
     this.aliveCount=TOTAL_PLAYERS;
     // Snap camera to spawn
@@ -3796,8 +3803,10 @@ class Game {
         const diff=this.difficulty||'medium';
         const pt=this.player.type;
         if (!p.diffWins[pt]) p.diffWins[pt]={};
-        if (diff==='hard')    p.diffWins[pt].hard=true;
-        if (diff==='hellish') p.diffWins[pt].hellish=true;
+        if (diff==='hard')     p.diffWins[pt].hard=true;
+        if (diff==='hellish')  p.diffWins[pt].hellish=true;
+        if (diff==='divine')   p.diffWins[pt].divine=true;
+        if (diff==='galactic') p.diffWins[pt].galactic=true;
       }
       Progress.save();
       this.lastTrophyDelta=delta;
@@ -4280,22 +4289,33 @@ class Game {
       const totalCardsW=cols*cw+(cols-1)*cgap;
 
       // ── Difficulty tabs ──────────────────────────────────────
-      const tabH=32, tabGap=6, tabsY=94;
-      const tabW=(totalCardsW-4*tabGap)/5;
+      const nTabs=DIFFICULTIES.length, tabH=32, tabGap=6, tabsY=94;
+      const tabW=(totalCardsW-(nTabs-1)*tabGap)/nTabs;
       this.diffTabRects=[];
-      for (let i=0;i<5;i++) {
+      for (let i=0;i<nTabs;i++) {
         const diff=DIFFICULTIES[i];
         const active=this.selectedDiff===diff;
         const tx=startX+i*(tabW+tabGap);
         const col=DIFF_COLORS[i];
+        const galactic=diff==='galactic';
         ctx.save();
+        if (galactic) { // космическое мерцание для секретного уровня
+          const pulse=0.5+0.5*Math.sin(this.frameCount*0.12);
+          ctx.shadowColor=col; ctx.shadowBlur=active?(8+10*pulse):4;
+        }
         ctx.fillStyle=active?col:'rgba(0,0,0,0.35)';
         ctx.beginPath(); ctx.roundRect(tx,tabsY,tabW,tabH,8); ctx.fill();
+        ctx.shadowBlur=0;
         if (active){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=0.6;ctx.beginPath();ctx.roundRect(tx-2,tabsY-2,tabW+4,tabH+4,10);ctx.stroke();}
         ctx.globalAlpha=1;
         ctx.fillStyle=active?'#fff':'rgba(255,255,255,0.45)';
-        ctx.font=uiFont(active?12:10); ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(DIFF_LABELS[i],tx+tabW/2,tabsY+tabH/2);
+        // Fit label inside the tab
+        const label=DIFF_LABELS[i];
+        let fs=active?11:10;
+        ctx.font=uiFont(fs);
+        while (ctx.measureText(label).width>tabW-8 && fs>6) { fs--; ctx.font=uiFont(fs); }
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(label,tx+tabW/2,tabsY+tabH/2);
         ctx.restore();
         this.diffTabRects.push({x:tx,y:tabsY,w:tabW,h:tabH,diff});
       }
@@ -4402,7 +4422,8 @@ class Game {
           ctx.font=uiFont(36); ctx.textAlign='center'; ctx.textBaseline='middle';
           ctx.fillText('🔒',cx2+cw/2,cy2+ch/2-14);
           ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font=uiFont(10);
-          const req=this.selectedDiff==='divine'?'Победи АДСКИХ':'Победи СЛОЖНЫХ';
+          const reqText={hellish:'Победи СЛОЖНЫХ',divine:'Победи АДСКИХ',galactic:'Победи БОЖЕСТВЕННЫХ'};
+          const req=reqText[this.selectedDiff]||'';
           ctx.fillText(req,cx2+cw/2,cy2+ch/2+22);
         }
         ctx.restore();
@@ -5276,10 +5297,10 @@ class Game {
       for (const c of this.brawlerCardRects) {
         if (mx>=c.x&&mx<=c.x+c.w&&my>=c.y&&my<=c.y+c.h) {
           if (!Progress.hasBeatDiff(c.key, this.selectedDiff)) {
-            const msg=this.selectedDiff==='divine'
-              ?'🔒 Сначала победи АДСКИХ с этим героем!'
-              :'🔒 Сначала победи СЛОЖНЫХ с этим героем!';
-            this._lockedFlash={msg, t:120};
+            const reqMsg={hellish:'🔒 Сначала победи СЛОЖНЫХ с этим героем!',
+                          divine:'🔒 Сначала победи АДСКИХ с этим героем!',
+                          galactic:'🔒 Сначала победи БОЖЕСТВЕННЫХ с этим героем!'};
+            this._lockedFlash={msg:reqMsg[this.selectedDiff]||'', t:120};
             return;
           }
           this.startTransition(()=>this.startMatch(c.key, this.selectedDiff));
