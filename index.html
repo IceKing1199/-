@@ -125,6 +125,7 @@ const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
 const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1840
 const CANVAS_WIDTH  = 800;
 const CANVAS_HEIGHT = 600;
+const VIEW_ZOOM = 1.25;                 // camera zoom-in: smaller visible world = bigger characters
 const MATCH_DURATION = 180;             // fail-safe; matches end by elimination
 const TOTAL_PLAYERS = 8;                // 1 player + 7 bots
 const TAU = Math.PI * 2;
@@ -2570,16 +2571,19 @@ class Renderer3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     this.renderer.shadowMap.enabled=true;
     this.renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+    this.renderer.toneMapping=THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure=1.08;
 
     this.scene=new THREE.Scene();
     this._dayBg=new THREE.Color('#7ec850'); this._nightBg=new THREE.Color('#2a4030');
     this._dayAmb=new THREE.Color('#ffffff'); this._nightAmb=new THREE.Color('#8090c8');
     this.scene.background=this._dayBg.clone();
+    this.scene.fog=new THREE.Fog(this._dayBg.clone(),1400,3200);
 
     // Камера Brawl Stars: наклон ~55°, видимая зона ≈ 800×600 игровых юнитов
     this.viewW=CANVAS_WIDTH;
     this.camera=new THREE.PerspectiveCamera(40, CANVAS_WIDTH/CANVAS_HEIGHT, 80, 4000);
-    const pitch=55*Math.PI/180, L=800;
+    const pitch=55*Math.PI/180, L=800/VIEW_ZOOM;
     this.camH=Math.sin(pitch)*L; this.camD=Math.cos(pitch)*L;
 
     this.ambient=new THREE.AmbientLight(0xffffff,0.55);
@@ -2614,7 +2618,7 @@ class Renderer3D {
 
   render(game) {
     // Камера смотрит в центр текущего 2D-вьюпорта (логика камеры не менялась)
-    let cx=game.camera.x+this.viewW/2, cz=game.camera.y+CANVAS_HEIGHT/2;
+    let cx=game.camera.x+(this.viewW/VIEW_ZOOM)/2, cz=game.camera.y+(CANVAS_HEIGHT/VIEW_ZOOM)/2;
     if (game.shake.timer>0) {
       const k=game.shake.power*(game.shake.timer/14);
       cx+=rand(-k,k); cz+=rand(-k,k);
@@ -2630,6 +2634,7 @@ class Renderer3D {
     this.ambient.intensity=lerp(0.55,0.4,k);
     this.ambient.color.lerpColors(this._dayAmb,this._nightAmb,k);
     this.scene.background.lerpColors(this._dayBg,this._nightBg,k);
+    if(this.scene.fog) this.scene.fog.color.copy(this.scene.background);
 
     this.mapR.update(game);
     this.charR.sync(game);
@@ -2783,7 +2788,7 @@ class MapRenderer3D {
         else if (t===T_WATER) { g.fillStyle='#2f7fb8'; g.fillRect(x-1,y-1,TILE+2,TILE+2); }
       }
     const tex=new THREE.CanvasTexture(c);
-    tex.anisotropy=4;
+    tex.anisotropy=8;
     return tex;
   }
 
@@ -3376,10 +3381,12 @@ class Game {
   }
 
   resizeCanvas() {
-    this.canvas.width=window.innerWidth;
-    this.canvas.height=window.innerHeight;
-    this.viewW=Math.round(CANVAS_HEIGHT*this.canvas.width/this.canvas.height);
-    if (this.renderer3d) { this.renderer3d.viewW=this.viewW; this.renderer3d.resize(this.canvas.width,this.canvas.height); }
+    const cssW=window.innerWidth, cssH=window.innerHeight;
+    const dpr=Math.min(window.devicePixelRatio||1,2);
+    this.canvas.style.width=cssW+'px'; this.canvas.style.height=cssH+'px';
+    this.canvas.width=Math.round(cssW*dpr); this.canvas.height=Math.round(cssH*dpr);
+    this.viewW=Math.round(CANVAS_HEIGHT*cssW/cssH);
+    if (this.renderer3d) { this.renderer3d.viewW=this.viewW; this.renderer3d.resize(cssW,cssH); }
     this.layoutControls();
   }
 
@@ -3429,7 +3436,7 @@ class Game {
 
   toCanvasCoords(clientX, clientY) {
     const rect=this.canvas.getBoundingClientRect();
-    const s=this.canvas.height/CANVAS_HEIGHT;
+    const s=rect.height/CANVAS_HEIGHT;
     return { x:(clientX-rect.left)/s, y:(clientY-rect.top)/s };
   }
 
@@ -3629,8 +3636,10 @@ class Game {
     }
     this.aliveCount=TOTAL_PLAYERS;
     // Snap camera to spawn
-    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-this.viewW,this.player.x-this.viewW/2));
-    this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-CANVAS_HEIGHT,this.player.y-CANVAS_HEIGHT/2));
+    const visW=this.viewW/VIEW_ZOOM, visH=CANVAS_HEIGHT/VIEW_ZOOM;
+    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-visW,this.player.x-visW/2));
+    this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-visH,this.player.y-visH/2));
+    this._plx=this.player.x; this._ply=this.player.y; this._leadX=0; this._leadY=0;
     if (this.renderer3d) this.renderer3d.onMatchStart(this);
   }
 
@@ -4075,13 +4084,18 @@ class Game {
 
   updateCamera() {
     if (!this.player) return;
-    const vw=this.viewW;
-    const tx=this.player.x-vw/2;
-    const ty=this.player.y-CANVAS_HEIGHT/2;
-    this.camera.x=lerp(this.camera.x,tx,0.12);
-    this.camera.y=lerp(this.camera.y,ty,0.12);
-    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-vw,this.camera.x));
-    this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-CANVAS_HEIGHT,this.camera.y));
+    const visW=this.viewW/VIEW_ZOOM, visH=CANVAS_HEIGHT/VIEW_ZOOM;
+    const lvx=this.player.x-(this._plx??this.player.x);
+    const lvy=this.player.y-(this._ply??this.player.y);
+    this._plx=this.player.x; this._ply=this.player.y;
+    this._leadX=lerp(this._leadX||0, lvx*6, 0.08);
+    this._leadY=lerp(this._leadY||0, lvy*6, 0.08);
+    const tx=this.player.x+this._leadX-visW/2;
+    const ty=this.player.y+this._leadY-visH/2;
+    this.camera.x=lerp(this.camera.x,tx,0.10);
+    this.camera.y=lerp(this.camera.y,ty,0.10);
+    this.camera.x=Math.max(0,Math.min(ARENA_WIDTH-visW,this.camera.x));
+    this.camera.y=Math.max(0,Math.min(ARENA_HEIGHT-visH,this.camera.y));
   }
 
   addShake(p) {
