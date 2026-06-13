@@ -118,9 +118,9 @@
 // Mobile: twin virtual joysticks + dedicated super stick.
 // ============================================================
 
-const TILE      = 80;
-const MAP_COLS  = 30;
-const MAP_ROWS  = 23;
+const TILE      = 40;
+const MAP_COLS  = 60;
+const MAP_ROWS  = 46;
 const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
 const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1840
 const CANVAS_WIDTH  = 800;
@@ -143,8 +143,8 @@ const BOT_PARAMS = [
 const TAU = Math.PI * 2;
 
 // Tile types
-const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5;
-const BOX_HP = 1900, CRATE_HP = 2900;
+const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5, T_STEEL=6;
+const CRATE_HP = 2900; // only T_CRATE has HP; T_BOX/T_WALL destroyed instantly by supers
 
 let game = null; // global singleton, set on load
 
@@ -233,33 +233,56 @@ const BRAWLER_CONFIGS = {
   }
 };
 
-// ── TILE MAP (Showdown-style, 180° symmetric) ────────────────
-// .=empty  X=rock wall  B=box  C=power-cube crate  b=bush
-// W=water (blocks movement, bullets fly over)  S=spawn point
+// ── TILE MAP (left-right symmetric, 60×46, TILE=40) ──────────
+// .=empty  S=spawn  R=reinforced(indestructible)  X=wall(super only)
+// B=box(super only)  C=power-crate(any dmg+drop)  b=bush  W=water
 const MAP_ASCII = [
-"..............................",
-".S......bb....S.....bb......S.",
-"........bb..XX..XX..bb........",
-"...BB.......X....X.......BB...",
-"...BB...C................C....",
-"..........bbb....bbb..........",
-".WW.......bbb....bbb.......WW.",
-".WW...X......BBBB......X...WW.",
-"......X.......BB.......X......",
-".S....X................X......",
-"............bbbbbb............",
-".....C.....bb.CC.bb.....C.....",
-"............bbbbbb............",
-"......X................X....S.",
-"......X.......BB.......X......",
-".WW...X......BBBB......X...WW.",
-".WW.......bbb....bbb.......WW.",
-"..........bbb....bbb..........",
-"....C................C...BB...",
-"...BB.......X....X.......BB...",
-"........bb..XX..XX..bb........",
-".S......bb.....S....bb......S.",
-"..............................",
+  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', // 0
+  'R....BBB............................................BBB....R', // 1
+  'R....BBB............................................BBB....R', // 2
+  'R.S.....BB........................................BB.....S.R', // 3
+  'R.......BB......bbb......................bbb......BB.......R', // 4
+  'R.......XXX...C.bbb......................bbb.C...XXX.......R', // 5
+  'R.......XXX......................................XXX.......R', // 6
+  'R....BB.XXX......................................XXX.BB....R', // 7
+  'R....BB.............bbb..............bbb.............BB....R', // 8
+  'R...................bbb..............bbb...................R', // 9
+  'R....C...............RRR............RRR...............C....R', // 10
+  'R....WW.........XXX..RRR............RRR..XXX.........WW....R', // 11
+  'R....WW.........XXX..RRR............RRR..XXX.........WW....R', // 12
+  'R...............XXXC.....WWWWWWWWWW.....CXXX...............R', // 13
+  'R.S......................WWWWWWWWWW......................S.R', // 14
+  'R....BB..................WWWWWWWWWW..................BB....R', // 15
+  'R....BB....................C....C....................BB....R', // 16
+  'R...........XXX....BB..................BB....XXX...........R', // 17
+  'R...........XXX....BB..................BB....XXX...........R', // 18
+  'R......bb...XXX.........BB........BB.........XXX...bb......R', // 19
+  'R......bb...XXX.........BB........BB.........XXX...bb......R', // 20
+  'R......bb..................RRRRRR..................bb......R', // 21
+  'R........C................bbbbbbbb................C........R', // 22
+  'R........C................bbbbbbbb................C........R', // 23
+  'R.........................bbbbbbbb.........................R', // 24
+  'R......bb...XXX.........BB........BB.........XXX...bb......R', // 25
+  'R......bb...XXX.........BB........BB.........XXX...bb......R', // 26
+  'R......bb...XXX....BB..................BB....XXX...bb......R', // 27
+  'R...........XXX....BB..................BB....XXX...........R', // 28
+  'R....BB....................C....C....................BB....R', // 29
+  'R....BB..................WWWWWWWWWW..................BB....R', // 30
+  'R.S......................WWWWWWWWWW......................S.R', // 31
+  'R...............XXXC.....WWWWWWWWWW.....CXXX...............R', // 32
+  'R....WW.........XXX..RRR............RRR..XXX.........WW....R', // 33
+  'R....WW.........XXX..RRR............RRR..XXX.........WW....R', // 34
+  'R....C...............RRR............RRR...............C....R', // 35
+  'R...................bbb..............bbb...................R', // 36
+  'R....BB.............bbb..............bbb.............BB....R', // 37
+  'R....BB.XXX......................................XXX.BB....R', // 38
+  'R.......XXX......................................XXX.......R', // 39
+  'R.......XXX...C.bbb......................bbb.C...XXX.......R', // 40
+  'R.......BB......bbb......................bbb......BB.......R', // 41
+  'R.S.....BB........................................BB.....S.R', // 42
+  'R....BBB............................................BBB....R', // 43
+  'R....BBB............................................BBB....R', // 44
+  'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR', // 45
 ];
 
 function buildTileMap() {
@@ -268,7 +291,7 @@ function buildTileMap() {
   const grid = new Uint8Array(MAP_COLS*MAP_ROWS);
   const boxHp = new Float32Array(MAP_COLS*MAP_ROWS);
   const spawnPoints = [];
-  const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER};
+  const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER,'R':T_STEEL};
   for (let ty=0; ty<MAP_ROWS; ty++) {
     const row = MAP_ASCII[ty];
     if (row.length !== MAP_COLS)
@@ -278,8 +301,7 @@ function buildTileMap() {
       if (t === undefined) throw new Error(`MAP_ASCII bad char '${ch}' at ${tx},${ty}`);
       const i = ty*MAP_COLS+tx;
       grid[i] = t;
-      if (t === T_BOX)   boxHp[i] = BOX_HP;
-      if (t === T_CRATE) boxHp[i] = CRATE_HP;
+      if (t === T_CRATE) boxHp[i] = CRATE_HP; // only T_CRATE has HP; T_BOX is instant-destroyed
       if (ch === 'S') spawnPoints.push({ x:(tx+0.5)*TILE, y:(ty+0.5)*TILE });
     }
   }
@@ -287,12 +309,12 @@ function buildTileMap() {
     grid, boxHp, spawnPoints,
     version: 0, // bumped when a box breaks (minimap cache invalidation)
     tileAt(tx, ty) {
-      if (tx<0||ty<0||tx>=MAP_COLS||ty>=MAP_ROWS) return T_WALL;
+      if (tx<0||ty<0||tx>=MAP_COLS||ty>=MAP_ROWS) return T_STEEL;
       return grid[ty*MAP_COLS+tx];
     },
     tileAtWorld(x, y) { return this.tileAt(Math.floor(x/TILE), Math.floor(y/TILE)); },
-    isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER; },
-    isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE; },
+    isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER||t===T_STEEL; },
+    isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_STEEL; },
     // Only checks the 2x2-3x3 tiles overlapping the circle.
     circleHitsSolid(x, y, r, solidFn) {
       const tx0=Math.floor((x-r)/TILE), tx1=Math.floor((x+r)/TILE);
@@ -308,16 +330,20 @@ function buildTileMap() {
     damageBox(tx, ty, dmg) {
       const i = ty*MAP_COLS+tx;
       const t = grid[i];
-      if (t!==T_BOX && t!==T_CRATE) return null;
-      boxHp[i] -= dmg;
-      if (boxHp[i] > 0) return null;
-      grid[i] = T_EMPTY;
-      this.version++;
-      return t===T_CRATE ? 'crate' : 'box';
+      if (t===T_WALL||t===T_BOX) {
+        // instant-destroy (only called when caller already checked breaksWalls/dash)
+        grid[i]=T_EMPTY; this.version++;
+        return t===T_WALL ? 'wall' : 'box';
+      }
+      if (t!==T_CRATE) return null; // T_STEEL and anything else: untouchable
+      boxHp[i]-=dmg;
+      if (boxHp[i]>0) return null;
+      grid[i]=T_EMPTY; this.version++;
+      return 'crate';
     },
     boxHpRatio(tx, ty) {
       const i = ty*MAP_COLS+tx;
-      return boxHp[i] / (grid[i]===T_CRATE ? CRATE_HP : BOX_HP);
+      return boxHp[i]/CRATE_HP;
     },
     inBush(x, y) { return this.tileAtWorld(x, y) === T_BUSH; },
   };
@@ -921,8 +947,9 @@ class Bullet {
                 : (this.isSuper ? (config.superDamage||config.damage) : config.damage);
     this.range  = opts.range !== undefined ? opts.range
                 : config.range * (this.isSuper ? 1.3 : 1);
-    this.pierces   = !!opts.pierces;   // Colt super: smashes boxes and keeps flying
-    this.knockback = !!opts.knockback; // Shelly super: pushes targets back
+    this.pierces    = !!opts.pierces;     // Colt super: smashes boxes and keeps flying
+    this.knockback  = !!opts.knockback;  // Shelly super: pushes targets back
+    this.breaksWalls= !!opts.breaksWalls; // Shelly/Colt super: breaks T_BOX and T_WALL
     // Nita's shockwave: passes through enemies, hitting each once
     this.piercesEnemies = !!(opts.piercesEnemies ?? config.piercesEnemies);
     this.hitTargets = this.piercesEnemies ? new Set() : null;
@@ -950,12 +977,19 @@ class Bullet {
     if (this.x<0||this.x>ARENA_WIDTH||this.y<0||this.y>ARENA_HEIGHT) { this.active=false; return; }
     const hit = tileMap.circleHitsSolid(this.x, this.y, this.radius, tileMap.isSolidForBullet);
     if (hit) {
-      if (hit.type===T_BOX || hit.type===T_CRATE) {
-        const broken = tileMap.damageBox(hit.tx, hit.ty, this.isSuper ? 99999 : this.damage);
-        if (broken && game) game.onBoxDestroyed(hit.tx, hit.ty, broken);
+      if (hit.type===T_CRATE) {
+        // Power-up crates: any bullet can destroy them
+        const broken=tileMap.damageBox(hit.tx,hit.ty,this.damage);
+        if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
         if (this.pierces) return;
+      } else if ((hit.type===T_BOX||hit.type===T_WALL)&&this.breaksWalls) {
+        // Regular boxes/walls: only super bullets with breaksWalls=true (Shelly/Colt)
+        const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
+        if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
+        if (this.pierces) return; // Colt super pierces through
       }
-      this.active = false;
+      // T_STEEL, unbreakable targets, or bullets without breaksWalls: stop here
+      this.active=false;
     }
   }
   render(ctx, cx, cy) {
@@ -1308,7 +1342,7 @@ class Brawler {
       this.y+Math.sin(b.angle)*(this.radius+5),
       b.angle+(b.isSuper?rand(-0.04,0.04):0),
       this.config, this.id,
-      { isSuper:b.isSuper, damage:b.damage, range:b.range, pierces:b.isSuper }));
+      { isSuper:b.isSuper, damage:b.damage, range:b.range, pierces:b.isSuper, breaksWalls:!!b.breaksWalls }));
     b.left--;
     if (game) game.sound.play('shoot');
   }
@@ -1370,9 +1404,10 @@ class Brawler {
     const nx=this.x+Math.cos(this.dashAngle)*this.config.chargeSpeed;
     const ny=this.y+Math.sin(this.dashAngle)*this.config.chargeSpeed;
     const hit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove);
-    if (hit && (hit.type===T_BOX||hit.type===T_CRATE)) {
+    if (hit && (hit.type===T_BOX||hit.type===T_CRATE||hit.type===T_WALL)) {
+      // Bull smashes regular boxes/crates/walls but stops at T_STEEL
       const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
-      if (broken && game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
+      if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
     } else if (hit || nx<this.radius || nx>ARENA_WIDTH-this.radius
                    || ny<this.radius || ny>ARENA_HEIGHT-this.radius) {
       this.isDashing=false; return;
@@ -1544,7 +1579,7 @@ class Brawler {
             this.y+Math.sin(this.angle)*off,
             start+step*i, this.config, this.id,
             { isSuper:true, damage:dmg, range:this.config.range*1.3,
-              knockback:true, speedMult:1-row*0.06 }));
+              knockback:true, speedMult:1-row*0.06, breaksWalls:true }));
         }
         if (game) game.spawnExplosion(this.x+Math.cos(this.angle)*80,this.y+Math.sin(this.angle)*80,'#ffdd00');
         break;
@@ -1552,7 +1587,7 @@ class Brawler {
       case 'colt':
         this.burst={ left:this.config.superBurstCount, angle:this.angle, timer:1,
                      isSuper:true, damage:this.config.superDamage*this.damageMult,
-                     range:this.config.range*1.5 };
+                     range:this.config.range*1.5, breaksWalls:true };
         if (game) game.spawnParticles(this.x+Math.cos(this.angle)*20,this.y+Math.sin(this.angle)*20,'#4169e1',10);
         break;
       case 'bull':
@@ -1633,14 +1668,15 @@ class Brawler {
             this.y+Math.sin(this.angle)*(this.radius+5-row*12),
             start+step*i, this.config, this.id,
             { isSuper:true, damage:dmg, range:this.config.range*1.3,
-              knockback:true, speedMult:1-row*0.06 }));
+              knockback:true, speedMult:1-row*0.06, breaksWalls:true }));
         }
-        // Break 3×3 tiles of walls around the target
+        // Break 3×3 tiles of breakable walls around the target (not T_STEEL)
         const tx=Math.floor((this.x+Math.cos(this.angle)*180)/TILE);
         const ty=Math.floor((this.y+Math.sin(this.angle)*180)/TILE);
         for (let dy=-1;dy<=1;dy++) for (let dx=-1;dx<=1;dx++) {
           const idx=(ty+dy)*MAP_COLS+(tx+dx);
-          if (idx>=0&&idx<tileMap.grid.length&&tileMap.grid[idx]===T_WALL) {
+          if (idx>=0&&idx<tileMap.grid.length&&
+              (tileMap.grid[idx]===T_WALL||tileMap.grid[idx]===T_BOX)) {
             tileMap.grid[idx]=T_EMPTY; tileMap.version++;
           }
         }
@@ -1650,7 +1686,7 @@ class Brawler {
       case 'colt':
         this.burst={ left:24, angle:this.angle, timer:1,
                      isSuper:true, damage:this.config.superDamage*this.damageMult,
-                     range:this.config.range*1.5 };
+                     range:this.config.range*1.5, breaksWalls:true };
         break;
       case 'bull':
         this.isDashing=true;
@@ -2399,7 +2435,7 @@ class PowerCube {
 // ── POISON ZONE (shrinking showdown cloud) ──────────────────
 class PoisonZone {
   constructor() {
-    this.ring=0; this.maxRing=10;
+    this.ring=0; this.maxRing=20; // each ring=40px (TILE), 20×40=800px total shrink per side
     this.nextShrinkSec=20; this.shrinkInterval=10;
     this.warnTimer=0; this.tickTimer=0;
   }
@@ -2704,7 +2740,8 @@ class MapRenderer3D {
   constructor(scene) {
     this.scene=scene;
     this.root=null;
-    this.walls=null;
+    this.steelMesh=null;    // InstancedMesh for T_STEEL (indestructible, static)
+    this.wallGroups=new Map(); // tileIndex → {group,tx,ty} for T_WALL (breakable)
     this.boxes=new Map();   // tileIndex → {group, gem, tx, ty}
     this.bushes=[];
     this.water=[];          // {mesh, geom, wx, wz}
@@ -2716,7 +2753,7 @@ class MapRenderer3D {
   build(game) {
     if (this.root) { this.scene.remove(this.root); disposeGroupMats(this.root); }
     this.root=new THREE.Group();
-    this.boxes.clear(); this.bushes.length=0; this.water.length=0;
+    this.boxes.clear(); this.wallGroups.clear(); this.bushes.length=0; this.water.length=0;
 
     // Земля: текстура из 2D-декора тайлов (травинки, цветы, камешки)
     const ground=new THREE.Mesh(
@@ -2733,20 +2770,36 @@ class MapRenderer3D {
     outer.receiveShadow=true;
     this.root.add(outer);
 
-    // Стены — один InstancedMesh
-    const wallIdx=[];
-    for (let i=0;i<MAP_COLS*MAP_ROWS;i++) if (tileMap.grid[i]===T_WALL) wallIdx.push(i);
-    this.walls=new THREE.InstancedMesh(G3.box, this.lambert('#9a9cae'), wallIdx.length);
-    const dummy=new THREE.Object3D();
-    wallIdx.forEach((idx,i)=>{
-      const tx=idx%MAP_COLS, ty=Math.floor(idx/MAP_COLS);
-      dummy.position.set(tx*TILE+TILE/2, 35, ty*TILE+TILE/2);
-      dummy.scale.set(74,70,74);
-      dummy.updateMatrix();
-      this.walls.setMatrixAt(i,dummy.matrix);
-    });
-    this.walls.castShadow=true; this.walls.receiveShadow=true;
-    this.root.add(this.walls);
+    // Укреплённые стены T_STEEL — InstancedMesh (никогда не ломаются, тёмный металл)
+    const steelIdx=[];
+    for (let i=0;i<MAP_COLS*MAP_ROWS;i++) if (tileMap.grid[i]===T_STEEL) steelIdx.push(i);
+    if (steelIdx.length>0) {
+      this.steelMesh=new THREE.InstancedMesh(G3.box, this.lambert('#4a4a5e'), steelIdx.length);
+      const dummy=new THREE.Object3D();
+      steelIdx.forEach((idx,i)=>{
+        const tx=idx%MAP_COLS, ty=Math.floor(idx/MAP_COLS);
+        dummy.position.set(tx*TILE+TILE/2, 17, ty*TILE+TILE/2);
+        dummy.scale.set(38,34,38);
+        dummy.updateMatrix();
+        this.steelMesh.setMatrixAt(i,dummy.matrix);
+      });
+      this.steelMesh.castShadow=true; this.steelMesh.receiveShadow=true;
+      this.root.add(this.steelMesh);
+    }
+
+    // Обычные стены T_WALL (ломаются ультами — индивидуальные меши для удаления)
+    for (let ty2=0;ty2<MAP_ROWS;ty2++)
+      for (let tx2=0;tx2<MAP_COLS;tx2++) {
+        if (tileMap.tileAt(tx2,ty2)!==T_WALL) continue;
+        const grp=new THREE.Group();
+        const body=new THREE.Mesh(G3.box, this.lambert('#9a9cae'));
+        body.scale.set(36,30,36); body.position.y=15;
+        body.castShadow=true; body.receiveShadow=true;
+        grp.add(body);
+        grp.position.set(tx2*TILE+TILE/2, 0, ty2*TILE+TILE/2);
+        this.root.add(grp);
+        this.wallGroups.set(ty2*MAP_COLS+tx2,{group:grp,tx:tx2,ty:ty2});
+      }
 
     // Ящики и крейты (ломаются — индивидуальные меши)
     for (let ty=0;ty<MAP_ROWS;ty++)
@@ -2755,15 +2808,15 @@ class MapRenderer3D {
         const x=tx*TILE+TILE/2, z=ty*TILE+TILE/2;
         if (t===T_BOX||t===T_CRATE) {
           const grp=new THREE.Group();
-          const body=new THREE.Mesh(G3.box, this.lambert(t===T_CRATE?'#b29572':'#9b8160'));
-          body.scale.set(64,52,64); body.position.y=26;
+          const body=new THREE.Mesh(G3.box, this.lambert(t===T_CRATE?'#2ec8c8':'#9b8160'));
+          body.scale.set(32,26,32); body.position.y=13;
           body.castShadow=true; body.receiveShadow=true;
           grp.add(body);
           let gem=null;
           if (t===T_CRATE) {
             gem=new THREE.Mesh(G3.oct, new THREE.MeshLambertMaterial({
-              color:new THREE.Color('#bb44ff'), emissive:new THREE.Color('#551a80')}));
-            gem.scale.setScalar(12); gem.position.y=64;
+              color:new THREE.Color('#ffffff'), emissive:new THREE.Color('#00aaaa')}));
+            gem.scale.setScalar(8); gem.position.y=36;
             grp.add(gem);
           }
           grp.position.set(x,0,z);
@@ -2845,7 +2898,14 @@ class MapRenderer3D {
   update(game) {
     if (!this.root) return;
     const t=game.frameCount;
-    // Ящики: урон → проседание, слом → удаление
+    // Обычные стены T_WALL: удалять после разрушения
+    for (const [idx,e] of this.wallGroups) {
+      if (tileMap.grid[idx]!==T_WALL) {
+        this.root.remove(e.group); disposeGroupMats(e.group);
+        this.wallGroups.delete(idx);
+      }
+    }
+    // Ящики и крейты: T_CRATE уменьшается при повреждении, T_BOX мгновенно удаляется
     for (const [idx,e] of this.boxes) {
       const tt=tileMap.grid[idx];
       if (tt!==T_BOX&&tt!==T_CRATE) {
@@ -2853,9 +2913,13 @@ class MapRenderer3D {
         this.boxes.delete(idx);
         continue;
       }
-      const r=tileMap.boxHpRatio(e.tx,e.ty);
-      e.group.scale.setScalar(0.86+0.14*Math.max(r,0));
-      if (e.gem) { e.gem.rotation.y+=0.03; e.gem.position.y=64+Math.sin(t*0.08)*3; }
+      if (tt===T_CRATE) {
+        const r=tileMap.boxHpRatio(e.tx,e.ty);
+        e.group.scale.setScalar(0.86+0.14*Math.max(r,0));
+      } else {
+        e.group.scale.setScalar(1); // T_BOX: instant destroy, always full until gone
+      }
+      if (e.gem) { e.gem.rotation.y+=0.03; e.gem.position.y=36+Math.sin(t*0.08)*2; }
     }
     // Кусты слегка колышутся
     for (const b of this.bushes)
@@ -4479,55 +4543,71 @@ class Game {
           drawEmptyTileDecor(ctx,x,y,hsh);
           continue;
         }
-        if (t===T_WALL) {
-          // Rounded rock: light top face over body, soft under-shadow, no outline
+        if (t===T_STEEL) {
+          // Dark metallic indestructible rock
+          ctx.fillStyle='rgba(0,0,0,0.2)';
+          ctx.beginPath(); ctx.roundRect(x+2,y+5,TILE-4,TILE-5,6); ctx.fill();
+          ctx.fillStyle='#3c3c50';
+          ctx.beginPath(); ctx.roundRect(x+2,y+3,TILE-4,TILE-5,6); ctx.fill();
+          ctx.fillStyle='#5a5a70';
+          ctx.beginPath(); ctx.roundRect(x+2,y+1,TILE-4,TILE-11,6); ctx.fill();
+        } else if (t===T_WALL) {
+          // Breakable rock wall (lighter than steel)
           ctx.fillStyle='rgba(0,0,0,0.13)';
-          ctx.beginPath(); ctx.roundRect(x+3,y+10,TILE-6,TILE-10,14); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+2,y+5,TILE-4,TILE-5,6); ctx.fill();
           ctx.fillStyle='#9a9cae';
-          ctx.beginPath(); ctx.roundRect(x+3,y+6,TILE-6,TILE-10,14); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+2,y+3,TILE-4,TILE-5,6); ctx.fill();
           ctx.fillStyle='#c6c8d6';
-          ctx.beginPath(); ctx.roundRect(x+3,y+2,TILE-6,TILE-20,14); ctx.fill();
-        } else if (t===T_BOX||t===T_CRATE) {
+          ctx.beginPath(); ctx.roundRect(x+2,y+1,TILE-4,TILE-11,6); ctx.fill();
+        } else if (t===T_BOX) {
+          // Regular box (brown) — breakable only by supers
           ctx.fillStyle='rgba(0,0,0,0.13)';
-          ctx.beginPath(); ctx.roundRect(x+5,y+9,TILE-10,TILE-12,10); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+3,y+5,TILE-6,TILE-6,5); ctx.fill();
           ctx.fillStyle='#9b8160';
-          ctx.beginPath(); ctx.roundRect(x+5,y+5,TILE-10,TILE-12,10); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+3,y+3,TILE-6,TILE-6,5); ctx.fill();
           ctx.fillStyle='#b29572';
-          ctx.beginPath(); ctx.roundRect(x+5,y+5,TILE-10,16,10); ctx.fill();
-          // plank seams
-          ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=2;
+          ctx.beginPath(); ctx.roundRect(x+3,y+3,TILE-6,8,5); ctx.fill();
+          ctx.strokeStyle='rgba(0,0,0,0.12)'; ctx.lineWidth=1.5;
           ctx.beginPath();
-          ctx.moveTo(x+10,y+TILE*0.42); ctx.lineTo(x+TILE-10,y+TILE*0.42);
-          ctx.moveTo(x+10,y+TILE*0.62); ctx.lineTo(x+TILE-10,y+TILE*0.62);
+          ctx.moveTo(x+5,y+TILE*0.42); ctx.lineTo(x+TILE-5,y+TILE*0.42);
+          ctx.moveTo(x+5,y+TILE*0.62); ctx.lineTo(x+TILE-5,y+TILE*0.62);
           ctx.stroke();
-          if (t===T_CRATE) {
-            ctx.fillStyle='#bb44ff';
-            ctx.save(); ctx.translate(x+TILE/2,y+TILE/2+2); ctx.rotate(Math.PI/4);
-            ctx.fillRect(-8,-8,16,16); ctx.restore();
-          }
+        } else if (t===T_CRATE) {
+          // Power-up crate (cyan/teal) — breakable by any attack, drops PowerCube
+          ctx.fillStyle='rgba(0,0,0,0.13)';
+          ctx.beginPath(); ctx.roundRect(x+3,y+5,TILE-6,TILE-6,5); ctx.fill();
+          ctx.fillStyle='#1fa8a8';
+          ctx.beginPath(); ctx.roundRect(x+3,y+3,TILE-6,TILE-6,5); ctx.fill();
+          ctx.fillStyle='#2ee8e8';
+          ctx.beginPath(); ctx.roundRect(x+3,y+3,TILE-6,8,5); ctx.fill();
+          // gem icon in center
+          ctx.fillStyle='#ffffff';
+          ctx.save(); ctx.translate(x+TILE/2,y+TILE/2+1); ctx.rotate(Math.PI/4);
+          ctx.fillRect(-5,-5,10,10); ctx.restore();
+          // HP bar for T_CRATE
           const r=tileMap.boxHpRatio(tx,ty);
           if (r<1) {
-            ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(x+10,y-4,TILE-20,5);
+            ctx.fillStyle='rgba(0,0,0,0.5)'; ctx.fillRect(x+4,y-3,TILE-8,4);
             ctx.fillStyle=r>0.5?'#5fd14c':'#ffaa00';
-            ctx.fillRect(x+10,y-4,(TILE-20)*Math.max(r,0),5);
+            ctx.fillRect(x+4,y-3,(TILE-8)*Math.max(r,0),4);
           }
         } else if (t===T_BUSH) {
           // Soft organic clumps; rustle when someone moves through
           const cx2=x+TILE/2, cy2=y+TILE/2;
           let sway=0;
           for (const m of movers) {
-            if (Math.abs(m.x-cx2)<70&&Math.abs(m.y-cy2)<70) {
-              sway=Math.sin(this.frameCount*0.3+(hsh%7))*2.2;
+            if (Math.abs(m.x-cx2)<50&&Math.abs(m.y-cy2)<50) {
+              sway=Math.sin(this.frameCount*0.3+(hsh%7))*1.8;
               break;
             }
           }
           ctx.fillStyle='#46a336';
-          dot(ctx,cx2+sway,cy2,34);
+          dot(ctx,cx2+sway,cy2,18);
           ctx.fillStyle='#3d942d';
-          dot(ctx,x+22+(hsh%18)+sway, y+24+((hsh>>4)%16), 17);
-          dot(ctx,x+52-((hsh>>6)%16)+sway, y+50-((hsh>>8)%14), 15);
+          dot(ctx,x+11+(hsh%9)+sway, y+12+((hsh>>4)%8), 9);
+          dot(ctx,x+26-((hsh>>6)%8)+sway, y+25-((hsh>>8)%7), 7);
           ctx.fillStyle='#55b545';
-          dot(ctx,x+34+((hsh>>10)%14)+sway*1.3, y+30+((hsh>>12)%18), 13);
+          dot(ctx,x+17+((hsh>>10)%7)+sway*1.3, y+15+((hsh>>12)%9), 7);
         } else if (t===T_WATER) {
           // Seamless water: corners round only where exposed to land
           const wN=tileMap.tileAt(tx,ty-1)===T_WATER, wS=tileMap.tileAt(tx,ty+1)===T_WATER;
@@ -4894,9 +4974,10 @@ class Game {
       const mc=this.mmCanvas.getContext('2d');
       const tw=(mmW-4)/MAP_COLS, th=(mmH-4)/MAP_ROWS;
       const TILE_COLORS={
+        [T_STEEL]:'rgba(60,60,80,0.95)',
         [T_WALL]:'rgba(150,150,165,0.85)',
         [T_BOX]:'rgba(139,115,85,0.85)',
-        [T_CRATE]:'rgba(187,68,255,0.85)',
+        [T_CRATE]:'rgba(46,200,200,0.9)',
         [T_BUSH]:'rgba(58,140,42,0.7)',
         [T_WATER]:'rgba(61,159,214,0.7)',
       };
