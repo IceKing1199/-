@@ -2468,7 +2468,7 @@ class VirtualJoystick {
     const result={
       dx:this.dx, dy:this.dy, magnitude:this.magnitude,
       angle:Math.atan2(this.dy,this.dx),
-      wasTap:(performance.now()-this.startTime)<250 && this.maxMagnitude<0.3
+      wasTap:(performance.now()-this.startTime)<350 && this.maxMagnitude<0.45
     };
     this.touchId=null; this.active=false;
     this.dx=0; this.dy=0; this.magnitude=0;
@@ -3459,7 +3459,7 @@ class Game {
     if (!this.player||!this.player.alive) return;
     if (r.wasTap) {
       // Quick tap = auto-aim at nearest enemy (Brawl Stars behaviour)
-      const a=this.autoAimAngle(this.player.config.range*1.2);
+      const a=this.autoAimAngle(this.player.config.range*1.8);
       if (a!==null) this.player.angle=a;
       this.playerShoot();
     } else if (r.magnitude>=0.3) {
