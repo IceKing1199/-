@@ -128,6 +128,17 @@ const CANVAS_HEIGHT = 600;
 const VIEW_ZOOM = 1.25;                 // camera zoom-in: smaller visible world = bigger characters
 const MATCH_DURATION = 180;             // fail-safe; matches end by elimination
 const TOTAL_PLAYERS = 8;                // 1 player + 7 bots
+const DIFFICULTIES  = ['noob','medium','hard','hellish','divine'];
+const DIFF_LABELS   = ['НУБЫ','СРЕДНИЕ','СЛОЖНЫЕ','АДСКИЕ','БОЖЕСТВЕННЫЕ'];
+const DIFF_COLORS   = ['#88cc44','#44aaff','#ff8844','#ff2244','#cc44ff'];
+// Per-difficulty BotAI params: det=vision, sm=shootRange×, rt=[reactionMin,Max frames], aim=angle error rad, ret=retreat HP ratio, sc=super chance
+const BOT_PARAMS = [
+  {det:200, sm:0.58, rt:[28,42], aim:22*Math.PI/180, ret:0.20, sc:0.25}, // noob
+  {det:330, sm:0.78, rt:[12,22], aim:11*Math.PI/180, ret:0.26, sc:0.60}, // medium
+  {det:480, sm:0.93, rt:[5,10],  aim: 4*Math.PI/180, ret:0.32, sc:0.88}, // hard
+  {det:650, sm:1.00, rt:[2,5],   aim:1.5*Math.PI/180, ret:0.18, sc:1.0}, // hellish
+  {det:950, sm:1.06, rt:[1,2],   aim:0.4*Math.PI/180, ret:0.10, sc:1.0}, // divine
+];
 const TAU = Math.PI * 2;
 
 // Tile types
@@ -1920,17 +1931,20 @@ class Brawler {
 // Priority state machine: flee poison > retreat & heal > grab cube
 // > fight > break crates > wander. Bots can't see into bushes.
 class BotAI {
-  constructor(brawler) {
+  constructor(brawler, diffIdx=1) {
     this.brawler=brawler;
+    this.diff=diffIdx;
+    this.bp=BOT_PARAMS[diffIdx]||BOT_PARAMS[1];
     this.state='wander';
     this.wanderAngle=rand(0,TAU);
     this.wanderTimer=0;
-    this.detectionRange=400;
-    this.shootRange=brawler.config.range*0.85;
+    this.detectionRange=this.bp.det;
+    this.shootRange=brawler.config.range*this.bp.sm;
     this.reactionTimer=0;
     this.strafePhase=rand(0,TAU);
     this.lastX=brawler.x; this.lastY=brawler.y;
     this.stuckCheckTimer=20; this.unstuckTimer=0; this.unstuckSign=1;
+    this._prevEX=brawler.x; this._prevEY=brawler.y;
   }
   // Returns 'shoot' | 'super' | null
   update(allBrawlers, game) {
@@ -1972,7 +1986,7 @@ class BotAI {
       const zb=pz.bounds();
       const a=Math.atan2((zb.y0+zb.y1)/2-me.y, (zb.x0+zb.x1)/2-me.x);
       me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
-    } else if (me.hp<0.35*me.maxHp && (!enemy||ed>300)) {
+    } else if (me.hp<this.bp.ret*me.maxHp && (!enemy||ed>300)) {
       // 1b. Low HP and no nearby enemy: hide in nearest bush
       const bush=this.findNearestTile(T_BUSH,4);
       if (bush&&bush.d>30) {
@@ -1980,7 +1994,7 @@ class BotAI {
         const a=Math.atan2(bush.y-me.y, bush.x-me.x);
         me.moveX=Math.cos(a); me.moveY=Math.sin(a); me.angle=a;
       }
-    } else if (me.hp<0.35*me.maxHp && enemy && ed<300) {
+    } else if (me.hp<this.bp.ret*me.maxHp && enemy && ed<300) {
       // 2. Low HP under fire: panic super, then run for a bush
       this.state='retreat';
       if (me.superCharge>=me.maxSuperCharge && ed<250) {
@@ -2034,6 +2048,7 @@ class BotAI {
   trySuper(enemy, ed) {
     const me=this.brawler;
     if (me.superCharge<me.maxSuperCharge) return false;
+    if (Math.random()>this.bp.sc) return false; // lower diff rarely uses super
     const angTo=Math.atan2(enemy.y-me.y, enemy.x-me.x);
     let ok=false;
     switch(me.type) {
@@ -2052,28 +2067,44 @@ class BotAI {
   }
   fight(enemy, ed) {
     const me=this.brawler;
-    const a=Math.atan2(enemy.y-me.y, enemy.x-me.x);
-    me.angle=a;
-    this.strafePhase+=0.04;
-    const strafe=Math.sin(this.strafePhase);
-    let mx=0, my=0;
-    if (ed>this.shootRange*0.6)      { mx=Math.cos(a); my=Math.sin(a); }
-    else if (ed<this.shootRange*0.3) { mx=-Math.cos(a)*0.7; my=-Math.sin(a)*0.7; }
-    mx+=Math.cos(a+Math.PI/2)*strafe*0.6;
-    my+=Math.sin(a+Math.PI/2)*strafe*0.6;
-    me.moveX=mx; me.moveY=my;
-    // Mortis/Edgar (мили): всегда давят, без стрейфа; crow: kite backward
-    if (me.type==='mortis'||me.type==='edgar') { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
-    else if (me.type==='crow') {
-      // kite: face enemy but step away slowly
-      const kite=Math.cos(a+Math.PI)*0.3;
-      me.moveX+=Math.cos(a+Math.PI)*0.3; me.moveY+=Math.sin(a+Math.PI)*0.3;
+    // Aim: lead targeting for hellish/divine, else direct aim + inaccuracy offset
+    let aimAngle;
+    if (this.diff>=3) {
+      const lead=ed/(me.config.bulletSpeed||8)*0.35;
+      const px=enemy.x+(enemy.x-this._prevEX)*lead;
+      const py=enemy.y+(enemy.y-this._prevEY)*lead;
+      aimAngle=Math.atan2(py-me.y,px-me.x);
+    } else {
+      aimAngle=Math.atan2(enemy.y-me.y,enemy.x-me.x);
     }
-    // Finisher: never retreat when enemy is nearly dead
-    const finisher=enemy.hp<500;
-    if (finisher) { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    aimAngle+=rand(-this.bp.aim,this.bp.aim);
+    me.angle=aimAngle;
+    this._prevEX=enemy.x; this._prevEY=enemy.y;
+
+    // Movement
+    const a=Math.atan2(enemy.y-me.y, enemy.x-me.x); // real direction (for movement)
+    if (this.diff===0) {
+      // Noob: just walk straight at enemy, no strafe
+      if (ed>this.shootRange*0.5) { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    } else {
+      this.strafePhase+=0.04;
+      const strafe=Math.sin(this.strafePhase);
+      let mx=0, my=0;
+      if (ed>this.shootRange*0.6)      { mx=Math.cos(a); my=Math.sin(a); }
+      else if (ed<this.shootRange*0.3) { mx=-Math.cos(a)*0.7; my=-Math.sin(a)*0.7; }
+      mx+=Math.cos(a+Math.PI/2)*strafe*0.6;
+      my+=Math.sin(a+Math.PI/2)*strafe*0.6;
+      me.moveX=mx; me.moveY=my;
+      // Mortis/Edgar (мили): всегда давят, без стрейфа; crow: kite backward
+      if (me.type==='mortis'||me.type==='edgar') { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+      else if (me.type==='crow') {
+        me.moveX+=Math.cos(a+Math.PI)*0.3; me.moveY+=Math.sin(a+Math.PI)*0.3;
+      }
+      // Finisher: never retreat when enemy is nearly dead
+      if (enemy.hp<500) { me.moveX=Math.cos(a); me.moveY=Math.sin(a); }
+    }
     if (ed<this.shootRange && me.ammo>0 && !me.burst && this.reactionTimer<=0 && canSee(me,enemy)) {
-      this.reactionTimer=8+randInt(0,10);
+      this.reactionTimer=randInt(this.bp.rt[0],this.bp.rt[1]);
       return 'shoot';
     }
     return null;
@@ -2097,6 +2128,12 @@ class BotAI {
     if (this.wanderTimer<=0) {
       this.wanderAngle=rand(0,TAU);
       this.wanderTimer=randInt(40,100);
+    }
+    // Hard+ bots drift toward arena centre to find more enemies
+    if (this.diff>=2 && this.wanderTimer%60===0) {
+      const cx=ARENA_WIDTH/2, cy=ARENA_HEIGHT/2;
+      const da=Math.atan2(cy-this.brawler.y, cx-this.brawler.x);
+      this.wanderAngle=lerp(this.wanderAngle,da,0.4);
     }
     // Drift toward the safe zone centre when near the poison edge
     if (game.poison.distInside(this.brawler.x,this.brawler.y)<200) {
@@ -2249,11 +2286,21 @@ const Progress = {
     // Older saves miss newer brawlers (e.g. edgar)
     for (const k of Object.keys(BRAWLER_CONFIGS))
       if (typeof this.data.trophies[k]!=='number') this.data.trophies[k]=0;
+    // Difficulty win tracking
+    if (!this.data.diffWins) this.data.diffWins={};
+    for (const k of Object.keys(BRAWLER_CONFIGS))
+      if (!this.data.diffWins[k]) this.data.diffWins[k]={};
     return this.data;
   },
   save() { try { localStorage.setItem('brawlArena.v1',JSON.stringify(this.data)); } catch(e) {} },
   total() {
     return Object.values(this.load().trophies).reduce((s,v)=>s+(v||0),0);
+  },
+  hasBeatDiff(brawler, diff) {
+    const d=this.load().diffWins;
+    if (diff==='hellish') return !!(d[brawler]&&d[brawler].hard);
+    if (diff==='divine')  return !!(d[brawler]&&d[brawler].hellish);
+    return true; // noob/medium/hard always available
   }
 };
 
@@ -3333,6 +3380,8 @@ class Game {
 
     this.state=GameState.MENU;
     this.menuState='main';
+    this.selectedDiff='medium';
+    this.diffTabRects=[];
     this.matchTimer=MATCH_DURATION;
     this.matchTimerDisplay=MATCH_DURATION;
     this.frameCount=0;
@@ -3613,7 +3662,8 @@ class Game {
     }
   }
 
-  startMatch(type) {
+  startMatch(type, diff='medium') {
+    this.difficulty=diff;
     this.state=GameState.PLAYING;
     this.matchTimer=MATCH_DURATION; this.matchTimerDisplay=MATCH_DURATION;
     this.brawlers=[]; this.bullets=[]; this.bears=[]; this.bats=[]; this.particles=[]; this.botAIs=[];
@@ -3645,7 +3695,7 @@ class Game {
       const sp=spawns[i%spawns.length];
       const bot=new Brawler(`bot_${i}`,types[i%types.length],sp.x,sp.y,false);
       this.brawlers.push(bot);
-      this.botAIs.push(new BotAI(bot));
+      this.botAIs.push(new BotAI(bot, DIFFICULTIES.indexOf(diff)));
     }
     this.aliveCount=TOTAL_PLAYERS;
     // Snap camera to spawn
@@ -3741,7 +3791,14 @@ class Game {
       const delta=TROPHY_DELTA[this.player.placement-1]||0;
       p.trophies[this.player.type]=Math.max(0,(p.trophies[this.player.type]||0)+delta);
       p.matches++;
-      if (this.player.placement===1) p.wins++;
+      if (this.player.placement===1) {
+        p.wins++;
+        const diff=this.difficulty||'medium';
+        const pt=this.player.type;
+        if (!p.diffWins[pt]) p.diffWins[pt]={};
+        if (diff==='hard')    p.diffWins[pt].hard=true;
+        if (diff==='hellish') p.diffWins[pt].hellish=true;
+      }
       Progress.save();
       this.lastTrophyDelta=delta;
       setTimeout(()=>this.sound.play('trophy'),700); // when the +N pops in
@@ -4220,9 +4277,45 @@ class Game {
       const keys=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
       const cols=4;
       const startX=w/2-(cols*cw+(cols-1)*cgap)/2;
-      this.selectMaxScroll=Math.max(0, 100+2*ch+16+24-h);
+      const totalCardsW=cols*cw+(cols-1)*cgap;
+
+      // ── Difficulty tabs ──────────────────────────────────────
+      const tabH=32, tabGap=6, tabsY=94;
+      const tabW=(totalCardsW-4*tabGap)/5;
+      this.diffTabRects=[];
+      for (let i=0;i<5;i++) {
+        const diff=DIFFICULTIES[i];
+        const active=this.selectedDiff===diff;
+        const tx=startX+i*(tabW+tabGap);
+        const col=DIFF_COLORS[i];
+        ctx.save();
+        ctx.fillStyle=active?col:'rgba(0,0,0,0.35)';
+        ctx.beginPath(); ctx.roundRect(tx,tabsY,tabW,tabH,8); ctx.fill();
+        if (active){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=0.6;ctx.beginPath();ctx.roundRect(tx-2,tabsY-2,tabW+4,tabH+4,10);ctx.stroke();}
+        ctx.globalAlpha=1;
+        ctx.fillStyle=active?'#fff':'rgba(255,255,255,0.45)';
+        ctx.font=uiFont(active?12:10); ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(DIFF_LABELS[i],tx+tabW/2,tabsY+tabH/2);
+        ctx.restore();
+        this.diffTabRects.push({x:tx,y:tabsY,w:tabW,h:tabH,diff});
+      }
+
+      // Locked-flash message
+      if (this._lockedFlash&&this._lockedFlash.t>0) {
+        this._lockedFlash.t--;
+        ctx.save();
+        ctx.globalAlpha=Math.min(1,this._lockedFlash.t/20);
+        ctx.fillStyle='rgba(200,20,20,0.88)';
+        const fw=Math.min(400,w-40);
+        ctx.beginPath(); ctx.roundRect(w/2-fw/2,tabsY+tabH+8,fw,32,12); ctx.fill();
+        ctx.fillStyle='#fff'; ctx.font=uiFont(13); ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(this._lockedFlash.msg,w/2,tabsY+tabH+24);
+        ctx.restore();
+      }
+
+      this.selectMaxScroll=Math.max(0, 136+2*ch+16+24-h);
       this.selectScroll=Math.max(0,Math.min(this.selectMaxScroll,this.selectScroll));
-      const rowYs=[100-this.selectScroll, 100+ch+16-this.selectScroll];
+      const rowYs=[138-this.selectScroll, 138+ch+16-this.selectScroll];
       this.brawlerCardRects=[];
       const superLabels={
         shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь',
@@ -4302,6 +4395,16 @@ class Game {
         ctx.textAlign='center'; ctx.textBaseline='middle';
         ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-26);
 
+        // Lock overlay for locked difficulties
+        if (!Progress.hasBeatDiff(key,this.selectedDiff)) {
+          ctx.fillStyle='rgba(0,0,0,0.62)';
+          ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.fill();
+          ctx.font=uiFont(36); ctx.textAlign='center'; ctx.textBaseline='middle';
+          ctx.fillText('🔒',cx2+cw/2,cy2+ch/2-14);
+          ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font=uiFont(10);
+          const req=this.selectedDiff==='divine'?'Победи АДСКИХ':'Победи СЛОЖНЫХ';
+          ctx.fillText(req,cx2+cw/2,cy2+ch/2+22);
+        }
         ctx.restore();
         this.brawlerCardRects.push({x:cx2,y:cy2+yOff,w:cw,h:ch,key});
       }
@@ -5163,10 +5266,24 @@ class Game {
           my>=this.startBtnRect.y&&my<=this.startBtnRect.y+this.startBtnRect.h)
         this.startTransition(()=>{ this.menuState='select'; });
     } else if (this.menuState==='select') {
+      // Difficulty tabs
+      for (const t of (this.diffTabRects||[])) {
+        if (mx>=t.x&&mx<=t.x+t.w&&my>=t.y&&my<=t.y+t.h) {
+          this.selectedDiff=t.diff; return;
+        }
+      }
+      // Character cards
       for (const c of this.brawlerCardRects) {
         if (mx>=c.x&&mx<=c.x+c.w&&my>=c.y&&my<=c.y+c.h) {
-          this.startTransition(()=>this.startMatch(c.key));
-          break;
+          if (!Progress.hasBeatDiff(c.key, this.selectedDiff)) {
+            const msg=this.selectedDiff==='divine'
+              ?'🔒 Сначала победи АДСКИХ с этим героем!'
+              :'🔒 Сначала победи СЛОЖНЫХ с этим героем!';
+            this._lockedFlash={msg, t:120};
+            return;
+          }
+          this.startTransition(()=>this.startMatch(c.key, this.selectedDiff));
+          return;
         }
       }
     }
