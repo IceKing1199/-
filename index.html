@@ -121,7 +121,7 @@ const BRAWLER_CONFIGS = {
     superDamage: 255, superBurstCount: 12, superChargeRate: 0.085
   },
   bull: {
-    name: 'Bull', hp: 5000, speed: 2.7, damage: 320, range: 170,
+    name: 'Bull', hp: 5000, speed: 2.7, damage: 310, range: 170,
     reload: 80, attackCooldown: 24, bulletSpeed: 5.5, bulletCount: 5, spread: 0.4,
     falloff: true, bulletStyle: 'pellet',
     radius: 22, color: '#8b0000', symbol: 'B',
@@ -129,7 +129,7 @@ const BRAWLER_CONFIGS = {
     chargeSpeed: 10, chargeDuration: 30
   },
   nita: {
-    name: 'Nita', hp: 3800, speed: 2.3, damage: 560, range: 260,
+    name: 'Nita', hp: 3800, speed: 2.3, damage: 510, range: 260,
     reload: 80, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 1, spread: 0,
     piercesEnemies: true, bulletRadius: 7, bulletStyle: 'wave', // her shockwave rolls through everyone
     radius: 17, color: '#8b4513', symbol: 'N',
@@ -138,11 +138,11 @@ const BRAWLER_CONFIGS = {
     bearRadius: 20, bearDuration: 900
   },
   edgar: {
-    name: 'Edgar', hp: 4600, speed: 2.9, damage: 520, range: 110,
+    name: 'Edgar', hp: 4600, speed: 2.9, damage: 510, range: 130,
     reload: 45, attackCooldown: 12, bulletSpeed: 14, bulletCount: 1, spread: 0,
     bulletRadius: 10, bulletStyle: 'punch',
     radius: 16, color: '#6c5ce7', symbol: 'E',
-    lifesteal: 0.6,
+    lifesteal: 0.6, melee: true, meleeArc: 0.55,
     superDamage: 0, superChargeRate: 0.16,
     jumpRange: 240, jumpDuration: 36
   },
@@ -156,7 +156,7 @@ const BRAWLER_CONFIGS = {
     superSpikeCount: 8, superSlowR: 60, superSlowDur: 120, superThrowRange: 260, superSlowDps: 80
   },
   crow: {
-    name: 'Crow', hp: 2800, speed: 2.65, damage: 145, range: 340,
+    name: 'Crow', hp: 2800, speed: 2.65, damage: 128, range: 340,
     reload: 85, attackCooldown: 20, bulletSpeed: 9, bulletCount: 3, spread: 0.22,
     bulletRadius: 5, bulletStyle: 'dagger',
     radius: 16, color: '#2d3436', symbol: 'Cr',
@@ -165,11 +165,11 @@ const BRAWLER_CONFIGS = {
     jumpRange: 200, jumpDuration: 28
   },
   mortis: {
-    name: 'Mortis', hp: 3600, speed: 2.1, damage: 640, range: 140,
+    name: 'Mortis', hp: 3600, speed: 2.5, damage: 700, range: 140,
     reload: 55, attackCooldown: 18, bulletSpeed: 15, bulletCount: 1, spread: 0,
     bulletRadius: 12, bulletStyle: 'shovel',
     radius: 18, color: '#6d4c99', symbol: 'Mo',
-    dashOnShoot: 65,
+    dashOnShoot: 120, melee: true, meleeContact: 22,
     superDamage: 0, superChargeRate: 0.13,
     batCount: 2, batDamage: 360, batSpeed: 2.8, batRadius: 14, batDuration: 600
   }
@@ -1169,6 +1169,8 @@ class Brawler {
     // Выпад Мортиса + чередование рук/взмахов в анимациях
     this.lungeTimer=0; this.lungeDur=8; this.lungeAngle=0; this.lungeStep=0;
     this.swingCount=0;
+    // Melee (Edgar punch / Mortis dash-hit) — no bullets
+    this.firedMelee=false; this.meleeDamage=0; this.meleeHitIds=null;
     this.superAimDist=null; // желаемая дальность ульты (стик/мышь/ИИ)
     // Edgar/Crow jump
     this.isJumping=false; this.jumpTimer=0; this.jumpDur=1;
@@ -1323,11 +1325,32 @@ class Brawler {
     }
     if (this.dashTimer<=0) this.isDashing=false;
   }
+  // Нанести ближний удар: урон, лайфстил, заряд ульты, попапы, смерть — без пули
+  meleeHit(target, dmg) {
+    if (!target.alive||target.isJumping) return;
+    const died=target.takeDamage(dmg, this.id);
+    if (!game) return;
+    game.addPopup(target.x, target.y-target.radius-16, String(Math.round(dmg)), '#ffffff');
+    if (target.isPlayer) game.addShake(4);
+    game.spawnParticles(target.x, target.y, target.color, 6);
+    game.sound.play('hit');
+    this.chargeSuper(dmg);
+    if (this===game.player) { game.playerStats.damageDealt+=dmg; game.playerStats.shotsHit++; }
+    if (target===game.player) game.playerStats.damageReceived+=dmg;
+    if (this.config.lifesteal && !this.isJumping && this.hp<this.maxHp) {
+      const heal=dmg*this.config.lifesteal;
+      this.hp=Math.min(this.maxHp, this.hp+heal);
+      game.addPopup(this.x, this.y-this.radius-16, '+'+Math.round(heal), '#7dff8a');
+    }
+    if (died) game.onBrawlerDeath(target, this.id);
+  }
+
   shoot() {
     if (this.ammo<=0||this.shootCooldown>0||!this.alive||this.burst||this.silenceTimer>0) return [];
     this.ammo--; this.shootCooldown=this.config.attackCooldown;
     if (this.reloadTimer<=0) this.reloadTimer=this.config.reload;
     this.shootFlash=4; this.revealTimer=60;
+    this.firedMelee=false;
     const angryMult=(!this.isPlayer&&game&&game.matchEvent&&game.matchEvent.type==='angryBots')?1.3:1;
     const dmg=this.config.damage*this.damageMult*angryMult;
     if (this.type==='colt') {
@@ -1336,6 +1359,32 @@ class Brawler {
       return [];
     }
     this.swingCount++;
+    // ── Melee: Эдгар и Мортис атакуют без пуль ───────────────
+    if (this.config.melee) {
+      this.firedMelee=true;
+      if (this.type==='edgar') {
+        // Мгновенный удар по ближайшей цели в конусе meleeArc перед бойцом
+        let hit=null, hd=Infinity;
+        if (game) for (const b of game.brawlers) {
+          if (b.id===this.id||!b.alive||b.isJumping) continue;
+          const d=dist(this.x,this.y,b.x,b.y);
+          if (d>this.config.range+b.radius) continue;
+          const ang=Math.atan2(b.y-this.y, b.x-this.x);
+          const diff=Math.abs(((ang-this.angle)+Math.PI*3)%(Math.PI*2)-Math.PI);
+          if (diff<=this.config.meleeArc && d<hd) { hd=d; hit=b; }
+        }
+        if (hit) this.meleeHit(hit, dmg);
+      } else if (this.type==='mortis') {
+        // Рывок вперёд с урон-контактом по ходу движения (обрабатывается в updateLunge)
+        this.meleeDamage=dmg;
+        this.meleeHitIds=new Set();
+        this.lungeDur=8; this.lungeTimer=8;
+        this.lungeAngle=this.angle;
+        this.lungeStep=this.config.dashOnShoot/8;
+      }
+      return [];
+    }
+    // ── Ranged projectiles ────────────────────────────────────
     const bullets=[];
     const poisonPayload = this.config.poisonDps ? {dps:this.config.poisonDps, duration:this.config.poisonDuration} : null;
     if (this.config.spread>0) {
@@ -1361,23 +1410,29 @@ class Brawler {
          isCactus: !!this.config.spikeExplode,
          poisonPayload}));
     }
-    // Mortis: плавный выпад вперёд на каждый взмах (8 кадров)
-    if (this.config.dashOnShoot) {
-      this.lungeDur=8; this.lungeTimer=8;
-      this.lungeAngle=this.angle;
-      this.lungeStep=this.config.dashOnShoot/8;
-    }
     return bullets;
   }
-  // Шаг выпада: движение с проверкой стен, без управления игроком
+  // Шаг выпада: движение с проверкой стен + контакт-урон для Мортиса
   updateLunge() {
     this.lungeTimer--;
     const nx=this.x+Math.cos(this.lungeAngle)*this.lungeStep;
     const ny=this.y+Math.sin(this.lungeAngle)*this.lungeStep;
-    if (tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove)) { this.lungeTimer=0; return; }
+    if (tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove)) { this.lungeTimer=0; this.meleeHitIds=null; return; }
     if (nx<this.radius||nx>ARENA_WIDTH-this.radius||
-        ny<this.radius||ny>ARENA_HEIGHT-this.radius) { this.lungeTimer=0; return; }
+        ny<this.radius||ny>ARENA_HEIGHT-this.radius) { this.lungeTimer=0; this.meleeHitIds=null; return; }
     this.x=nx; this.y=ny;
+    // Мортис: бьёт каждого врага, кого достаёт в рывке (один раз за рывок)
+    if (this.meleeHitIds && game) {
+      const contact=this.radius+(this.config.meleeContact||8);
+      for (const b of game.brawlers) {
+        if (b.id===this.id||!b.alive||this.meleeHitIds.has(b.id)) continue;
+        if (dist(this.x,this.y,b.x,b.y) < contact+b.radius) {
+          this.meleeHitIds.add(b.id);
+          this.meleeHit(b, this.meleeDamage);
+        }
+      }
+    }
+    if (this.lungeTimer<=0) this.meleeHitIds=null;
   }
   dashForward(px) {
     const steps=Math.ceil(px/8);
@@ -3468,6 +3523,14 @@ class Game {
         this.player.x+Math.cos(this.player.angle)*this.player.radius,
         this.player.y+Math.sin(this.player.angle)*this.player.radius,
         this.player.color, 6);
+    } else if (this.player.firedMelee) {
+      // Melee brawler (Edgar/Mortis): damage applied inside shoot(), log shot + puff
+      this.playerStats.shotsFired++;
+      this.sound.play('shoot');
+      this.spawnParticles(
+        this.player.x+Math.cos(this.player.angle)*(this.player.radius+8),
+        this.player.y+Math.sin(this.player.angle)*(this.player.radius+8),
+        this.player.color, 8);
     } else if (!hadAmmoBurst&&this.player.burst) {
       // Colt: shot accepted, bullets stream out via burst
       this.playerStats.shotsFired+=this.player.config.bulletCount||1;
@@ -3724,8 +3787,8 @@ class Game {
     // Update brawlers
     for (const b of this.brawlers) b.update();
 
-    // Separate overlapping brawlers (O(n²), n≤6 → 15 pairs)
-    const _alive=this.brawlers.filter(b=>b.alive&&!b.isJumping&&!b.isDashing);
+    // Separate overlapping brawlers (O(n²), n≤6 → 15 pairs); exclude lunging Mortis so dash passes through
+    const _alive=this.brawlers.filter(b=>b.alive&&!b.isJumping&&!b.isDashing&&!b.lungeTimer);
     for (let _i=0;_i<_alive.length-1;_i++) for (let _j=_i+1;_j<_alive.length;_j++) {
       const _a=_alive[_i], _b=_alive[_j];
       const _md=_a.radius+_b.radius, _dx=_a.x-_b.x, _dy=_a.y-_b.y;
