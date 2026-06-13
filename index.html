@@ -3777,11 +3777,6 @@ class Game {
 
       if (!IS_TOUCH&&this.mouse.down&&this.player.ammo>0&&this.player.shootCooldown<=0)
         this.playerShoot();
-      // Auto-attack: holding touch attack stick continuously fires
-      if (IS_TOUCH&&this.attackStick.active&&this.attackStick.magnitude>0.3&&
-          this.touchAimMode!=='super'&&!this.player.burst&&
-          this.player.ammo>0&&this.player.shootCooldown<=0)
-        this.playerShoot();
     }
 
     // Update brawlers
