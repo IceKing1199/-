@@ -107,7 +107,7 @@ const BRAWLER_CONFIGS = {
   // Балансные статы: выровнены по винрейту в симуляциях матчей
   // (см. историю коммитов); за основу взяты значения Brawl Stars level-1.
   shelly: {
-    name: 'Shelly', hp: 3600, speed: 2.3, damage: 255, range: 220,
+    name: 'Shelly', hp: 3600, speed: 2.3, damage: 290, range: 220,
     reload: 102, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 5, spread: 0.45,
     falloff: true, bulletStyle: 'pellet', pelletRows: 3,
     radius: 18, color: '#ff69b4', symbol: 'S',
@@ -129,7 +129,7 @@ const BRAWLER_CONFIGS = {
     chargeSpeed: 10, chargeDuration: 30
   },
   nita: {
-    name: 'Nita', hp: 3800, speed: 2.3, damage: 500, range: 260,
+    name: 'Nita', hp: 3800, speed: 2.3, damage: 560, range: 260,
     reload: 80, attackCooldown: 25, bulletSpeed: 6.5, bulletCount: 1, spread: 0,
     piercesEnemies: true, bulletRadius: 7, bulletStyle: 'wave', // her shockwave rolls through everyone
     radius: 17, color: '#8b4513', symbol: 'N',
@@ -153,19 +153,19 @@ const BRAWLER_CONFIGS = {
     radius: 17, color: '#4eb54e', symbol: 'Sp',
     spikeExplode: true, spikeDamage: 215, spikeCount: 6,
     superDamage: 0, superChargeRate: 0.08,
-    superSpikeCount: 8, superSlowR: 60, superSlowDur: 120, superThrowRange: 260
+    superSpikeCount: 8, superSlowR: 60, superSlowDur: 120, superThrowRange: 260, superSlowDps: 80
   },
   crow: {
-    name: 'Crow', hp: 2800, speed: 2.65, damage: 170, range: 340,
+    name: 'Crow', hp: 2800, speed: 2.65, damage: 145, range: 340,
     reload: 85, attackCooldown: 20, bulletSpeed: 9, bulletCount: 3, spread: 0.22,
     bulletRadius: 5, bulletStyle: 'dagger',
     radius: 16, color: '#2d3436', symbol: 'Cr',
-    poisonDps: 110, poisonDuration: 180,
+    poisonDps: 80, poisonDuration: 180,
     superDamage: 0, superChargeRate: 0.09,
     jumpRange: 200, jumpDuration: 28
   },
   mortis: {
-    name: 'Mortis', hp: 3600, speed: 2.1, damage: 690, range: 140,
+    name: 'Mortis', hp: 3600, speed: 2.1, damage: 640, range: 140,
     reload: 55, attackCooldown: 18, bulletSpeed: 15, bulletCount: 1, spread: 0,
     bulletRadius: 12, bulletStyle: 'shovel',
     radius: 18, color: '#6d4c99', symbol: 'Mo',
@@ -1261,8 +1261,10 @@ class Brawler {
       this.isJumping=false;
       this.speedBoostTimer=180;
       if (game) {
-        game.fx.push(new RingFX(this.x,this.y,'#8e7cf0',45));
-        game.spawnParticles(this.x,this.y,this.color,12);
+        const lCol=this.type==='edgar'?'#6c5ce7':this.type==='crow'?'#fdcb6e':'#8e7cf0';
+        game.fx.push(new RingFX(this.x,this.y,lCol,this.type==='edgar'?65:50));
+        if (this.type==='edgar') game.spawnExplosion(this.x,this.y,'#6c5ce7');
+        else game.spawnParticles(this.x,this.y,this.color,16);
         if (this.isPlayer) game.addShake(3);
         if (this.jumpLandBullets) {
           const { count, damage, range, speed, radius, poisonPayload } = this.jumpLandBullets;
@@ -1291,7 +1293,7 @@ class Brawler {
     if (game&&game.slowZones) for (const sz of game.slowZones) {
       if (dist(this.x,this.y,sz.x,sz.y)<sz.r) { slowMult=0.65; break; }
     }
-    if (this.poisonSlowTimer>0) slowMult=Math.min(slowMult,0.8);
+    if (this.poisonSlowTimer>0) slowMult=Math.min(slowMult,0.5);
     const sp=this.speed*(this.speedBoostTimer>0?1.3:1)*slowMult;
     const nx=this.x+Math.cos(ma)*sp;
     const ny=this.y+Math.sin(ma)*sp;
@@ -1430,12 +1432,14 @@ class Brawler {
             { isSuper:true, damage:dmg, range:this.config.range*1.3,
               knockback:true, speedMult:1-row*0.06 }));
         }
+        if (game) game.spawnExplosion(this.x+Math.cos(this.angle)*80,this.y+Math.sin(this.angle)*80,'#ffdd00');
         break;
       }
       case 'colt':
         this.burst={ left:this.config.superBurstCount, angle:this.angle, timer:1,
                      isSuper:true, damage:this.config.superDamage*this.damageMult,
                      range:this.config.range*1.5 };
+        if (game) game.spawnParticles(this.x+Math.cos(this.angle)*20,this.y+Math.sin(this.angle)*20,'#4169e1',10);
         break;
       case 'bull':
         this.isDashing=true;
@@ -1443,6 +1447,7 @@ class Brawler {
         this.dashAngle=this.angle;
         this.dashHitIds=new Set();
         this.trail=[];
+        if (game) { game.spawnExplosion(this.x,this.y,'#8b0000'); game.spawnParticles(this.x,this.y,'#d4a860',10); }
         break;
       case 'nita': {
         // Step the spawn point back toward Nita until it's clear of walls
@@ -1456,10 +1461,12 @@ class Brawler {
           }
         }
         result.bear=new Bear(bx, by, this.id, this.damageMult);
+        if (game) game.spawnParticles(bx,by,'#8b6348',14);
         break;
       }
       case 'edgar': {
         this.startJump(Math.min(aimDist,this.config.jumpRange));
+        if (game) game.spawnParticles(this.x,this.y,'#6c5ce7',14);
         break;
       }
       case 'crow': {
@@ -1468,6 +1475,7 @@ class Brawler {
         // on landing: 6 poison daggers in a ring
         this.jumpLandBullets={count:6, damage:cfg.damage*this.damageMult,
           poisonPayload:{dps:cfg.poisonDps, duration:cfg.poisonDuration}};
+        if (game) game.spawnParticles(this.x,this.y,'#a29bfe',14);
         break;
       }
       case 'spike': {
@@ -1477,6 +1485,7 @@ class Brawler {
         result.lob=new LobProjectile(this.x, this.y,
           this.x+Math.cos(this.angle)*d, this.y+Math.sin(this.angle)*d,
           this.id, this.damageMult, false);
+        if (game) game.spawnParticles(this.x,this.y,'#4eb54e',10);
         break;
       }
       case 'mortis': {
@@ -1485,6 +1494,7 @@ class Brawler {
         for (let i=0;i<cfg.batCount;i++) {
           result.bats.push(new Bat(this.x+rand(-30,30), this.y+rand(-30,30), this.id, this.damageMult));
         }
+        if (game) { game.spawnExplosion(this.x,this.y,'#6d4c99'); for (const bt of result.bats) game.spawnParticles(bt.x,bt.y,'#b388ff',6); }
         break;
       }
     }
@@ -2189,7 +2199,8 @@ class LobProjectile {
     }
     game.slowZones.push({ x:this.x, y:this.y,
       r:this.isHyper?140:cfg.superSlowR,
-      timer:this.isHyper?180:cfg.superSlowDur });
+      timer:this.isHyper?180:cfg.superSlowDur,
+      dps:cfg.superSlowDps||80, ownerId:this.ownerId });
     game.fx.push(new RingFX(this.x,this.y,'#4eb54e',70));
     game.spawnParticles(this.x,this.y,'#4eb54e',14);
     game.addShake(2);
@@ -3371,6 +3382,7 @@ class Game {
       }
       if (this.moveStick.active&&this.moveStick.touchId===t.identifier) {
         this.moveStick.end();
+        this.moveStick._sx=0; this.moveStick._sy=0;
         if (this.player) { this.player.moveX=0; this.player.moveY=0; }
         continue;
       }
@@ -3676,9 +3688,11 @@ class Game {
     if (this.player&&this.player.alive) {
       this.player.moveX=0; this.player.moveY=0;
       if (this.moveStick.active&&this.moveStick.magnitude>0.15) {
-        // Touch: analog joystick movement
-        this.player.moveX=this.moveStick.dx;
-        this.player.moveY=this.moveStick.dy;
+        // Smooth touch analog joystick: lerp toward raw input for less jitter
+        this.moveStick._sx=lerp(this.moveStick._sx??0,this.moveStick.dx,0.25);
+        this.moveStick._sy=lerp(this.moveStick._sy??0,this.moveStick.dy,0.25);
+        this.player.moveX=this.moveStick._sx;
+        this.player.moveY=this.moveStick._sy;
       } else {
         if (this.keys['w']||this.keys['arrowup'])    this.player.moveY=-1;
         if (this.keys['s']||this.keys['arrowdown'])  this.player.moveY=1;
@@ -3700,10 +3714,27 @@ class Game {
 
       if (!IS_TOUCH&&this.mouse.down&&this.player.ammo>0&&this.player.shootCooldown<=0)
         this.playerShoot();
+      // Auto-attack: holding touch attack stick continuously fires
+      if (IS_TOUCH&&this.attackStick.active&&this.attackStick.magnitude>0.3&&
+          this.touchAimMode!=='super'&&!this.player.burst&&
+          this.player.ammo>0&&this.player.shootCooldown<=0)
+        this.playerShoot();
     }
 
     // Update brawlers
     for (const b of this.brawlers) b.update();
+
+    // Separate overlapping brawlers (O(n²), n≤6 → 15 pairs)
+    const _alive=this.brawlers.filter(b=>b.alive&&!b.isJumping&&!b.isDashing);
+    for (let _i=0;_i<_alive.length-1;_i++) for (let _j=_i+1;_j<_alive.length;_j++) {
+      const _a=_alive[_i], _b=_alive[_j];
+      const _md=_a.radius+_b.radius, _dx=_a.x-_b.x, _dy=_a.y-_b.y;
+      const _d=Math.sqrt(_dx*_dx+_dy*_dy);
+      if (_d<_md) {
+        if (_d>0) { const _p=(_md-_d)*0.5; _a.x+=_dx/_d*_p; _a.y+=_dy/_d*_p; _b.x-=_dx/_d*_p; _b.y-=_dy/_d*_p; }
+        else { _a.x+=0.5; _b.x-=0.5; }
+      }
+    }
 
     // Bot AI
     for (const ai of this.botAIs) {
@@ -3814,8 +3845,25 @@ class Game {
     // Bat update
     for (const bat of this.bats) bat.update(this.brawlers);
     this.bats=this.bats.filter(b=>b.active);
-    // Slow zone update
-    for (const sz of this.slowZones) sz.timer--;
+    // Slow zone update (tick + optional DPS damage for Spike's super zone)
+    for (const sz of this.slowZones) {
+      sz.timer--;
+      if (sz.dps) {
+        for (const brawler of this.brawlers) {
+          if (!brawler.alive||brawler.id===sz.ownerId||brawler.isJumping) continue;
+          if (dist(brawler.x,brawler.y,sz.x,sz.y)<sz.r+brawler.radius) {
+            const dmg=sz.dps/60;
+            const died=brawler.takeDamage(dmg,sz.ownerId);
+            if (sz.timer%15===0) {
+              brawler.flashTimer=5;
+              this.addPopup(brawler.x,brawler.y-brawler.radius-16,
+                '-'+Math.round(sz.dps/4),'#56cfe1');
+            }
+            if (died) this.onBrawlerDeath(brawler,sz.ownerId);
+          }
+        }
+      }
+    }
     this.slowZones=this.slowZones.filter(sz=>sz.timer>0);
     for (const p of this.particles) p.update();
     this.particles=this.particles.filter(p=>p.active);
@@ -3844,6 +3892,7 @@ class Game {
             brawler.poisonTimer=bullet.poisonPayload.dur||bullet.poisonPayload.duration||180;
             brawler.poisonDps=bullet.poisonPayload.dps||80;
             brawler.poisonAttackerId=bullet.ownerId;
+            brawler.poisonSlowTimer=Math.max(brawler.poisonSlowTimer,180);
           }
           const att=this.brawlers.find(b=>b.id===bullet.ownerId);
           if (att&&att.alive) {
