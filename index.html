@@ -65,6 +65,23 @@
     @media (orientation: portrait) and (pointer: coarse) {
       #rotateOverlay { display: flex; }
     }
+    #fsBtn {
+      position: fixed;
+      top: 8px; right: 8px;
+      z-index: 9998;
+      width: 36px; height: 36px;
+      background: rgba(0,0,0,0.4);
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 7px;
+      color: #fff;
+      cursor: pointer;
+      touch-action: manipulation;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+    }
+    #fsBtn:active { opacity: 0.6; }
   </style>
 </head>
 <body>
@@ -81,6 +98,7 @@
   </svg>
   <span>Поверните экран</span>
 </div>
+<button id="fsBtn" aria-label="Fullscreen"></button>
 <script>
 /* Three.js r147 (MIT) — встроен для офлайн-работы */
 /**
@@ -2583,6 +2601,8 @@ class Renderer3D {
     this.renderer.setSize(w,h,false);
     const el=this.renderer.domElement;
     el.style.width=w+'px'; el.style.height=h+'px';
+    this.camera.aspect=w/h;
+    this.camera.updateProjectionMatrix();
   }
 
   onMatchStart(game) {
@@ -3353,15 +3373,8 @@ class Game {
   }
 
   resizeCanvas() {
-    const aspect=CANVAS_WIDTH/CANVAS_HEIGHT;
-    const wa=window.innerWidth/window.innerHeight;
-    if (wa>aspect) {
-      this.canvas.height=window.innerHeight;
-      this.canvas.width=window.innerHeight*aspect;
-    } else {
-      this.canvas.width=window.innerWidth;
-      this.canvas.height=window.innerWidth/aspect;
-    }
+    this.canvas.width=window.innerWidth;
+    this.canvas.height=window.innerHeight;
     if (this.renderer3d) this.renderer3d.resize(this.canvas.width, this.canvas.height);
   }
 
@@ -5128,6 +5141,29 @@ function bootGame() {
 }
 if (document.readyState === 'complete' || document.readyState === 'interactive') bootGame();
 else window.addEventListener('load', bootGame);
+</script>
+<script>
+(function(){
+  const btn=document.getElementById('fsBtn');
+  const ico={
+    expand:'<svg width="18" height="18" viewBox="0 0 18 18" fill="white"><path d="M1 1h5v2H3v3H1V1zm10 0h6v6h-2V3h-4V1zM1 11h2v3h3v2H1v-5zm14 3h-3v2h6v-6h-2v4z"/></svg>',
+    compress:'<svg width="18" height="18" viewBox="0 0 18 18" fill="white"><path d="M5 1v4H1V7h6V1H5zm8 0v6h6V5h-4V1h-2zM1 11h4v4h2v-6H1v2zm12 4v-4h4v-2h-6v6h2z"/></svg>'
+  };
+  function upd(){ btn.innerHTML=document.fullscreenElement?ico.compress:ico.expand; }
+  upd();
+  btn.addEventListener('click',function(){
+    const el=document.documentElement;
+    if(!document.fullscreenElement){
+      const r=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen;
+      if(r) r.call(el).catch(()=>{});
+    } else {
+      const x=document.exitFullscreen||document.webkitExitFullscreen;
+      if(x) x.call(document);
+    }
+  });
+  document.addEventListener('fullscreenchange',upd);
+  document.addEventListener('webkitfullscreenchange',upd);
+})();
 </script>
 </body>
 </html>
