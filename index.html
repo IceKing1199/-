@@ -3083,30 +3083,36 @@ class MapRenderer3D {
         } else if (t===T_BUSH) {
           const hsh=tileHash(tx,ty);
           const grp=new THREE.Group();
-          const bc=theme.bush;
-          // Плотные пучки листьев-блейдов, обращённых к камере (трава Brawl Stars)
-          const BCOLS=6, BROWS=6, STEP=6.2;
-          const FACE=-0.55;          // наклон к фикс-камере (≈ 90°−55°)
-          let bit=0;
+          const bcol=theme.bush.map(h=>new THREE.Color(h));
+          // Огромный плотный пучок листьев без зазоров — один InstancedMesh на тайл
+          const BCOLS=7, BROWS=7, N=BCOLS*BROWS;   // 49 листьев
+          const CELL=42/BCOLS;                      // покрытие на весь тайл (+выход за край)
+          const FACE=-0.55;                         // наклон к фикс-камере (≈ 90°−55°)
+          const im=new THREE.InstancedMesh(G3.leaf, this.lambert('#ffffff'), N);
+          im.castShadow=false; im.receiveShadow=false;
+          const d=new THREE.Object3D(); d.rotation.order='YXZ';
+          let i=0, bit=0;
           for (let gi=0;gi<BROWS;gi++) for (let gj=0;gj<BCOLS;gj++) {
             const jx=((hsh>>(bit  ))&3)-1.5;
             const jz=((hsh>>(bit+2))&3)-1.5;
             bit=(bit+3)&31;
-            const ox=-15.5 + gj*STEP + jx;
-            const oz=-15.5 + gi*STEP + jz;
-            const wide= 4.5 + ((hsh>>(gi+gj))&3)%3;        // ширина листа
-            const tall= 9 + ((hsh>>(gi*2+gj))&7)%7;        // высота листа (9-15)
-            // цвет по высоте: высокие — яркие верхушки, низкие — тёмная глубина
-            const c = tall>=13 ? bc[2] : tall<=10 ? bc[1] : bc[0];
-            const m=new THREE.Mesh(G3.leaf, this.lambert(c));
-            m.scale.set(wide, tall, 1.0);
-            m.rotation.order='YXZ';
-            m.rotation.y=((hsh>>(gj))&7)*0.18-0.6;          // разворот листа
-            m.rotation.x=FACE + (((hsh>>(gi))&3)-1.5)*0.06; // наклон к камере + вариация
-            m.rotation.z=(((hsh>>(gi+gj))&3)-1.5)*0.08;     // лёгкий roll
-            m.position.set(ox, tall*0.42, oz);              // основание у земли
-            grp.add(m);
+            const ox=-21 + (gj+0.5)*CELL + jx;
+            const oz=-21 + (gi+0.5)*CELL + jz;
+            const wide= 7.0 + ((hsh>>(gi+gj))&3)%3;        // крупный лист (перекрытие > CELL)
+            const tall= 13 + ((hsh>>(gi*2+gj))&7)%8;       // высокий (13-20) → пышно
+            const ci = tall>=18 ? 2 : tall<=15 ? 1 : 0;    // верх ярче / низ темнее
+            d.scale.set(wide, tall, 1.0);
+            d.rotation.y=((hsh>>(gj))&7)*0.18-0.6;
+            d.rotation.x=FACE + (((hsh>>(gi))&3)-1.5)*0.06;
+            d.rotation.z=(((hsh>>(gi+gj))&3)-1.5)*0.08;
+            d.position.set(ox, tall*0.42, oz);
+            d.updateMatrix(); im.setMatrixAt(i, d.matrix);
+            im.setColorAt(i, bcol[ci]);
+            i++;
           }
+          im.instanceMatrix.needsUpdate=true;
+          if (im.instanceColor) im.instanceColor.needsUpdate=true;
+          grp.add(im);
           grp.position.set(x,0,z);
           this.root.add(grp);
           this.bushes.push({group:grp, phase:hsh%7});
