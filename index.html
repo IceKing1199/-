@@ -152,14 +152,14 @@ const SOLID_INSET = 7; // collision rects are inset inside the 40px tile so char
 // Map themes — control ground/water/sky colours, decor style, and the rock & bush
 // palettes so each map matches its Brawl Stars look (desert/acid/oasis).
 const THEME_DESERT = { ground:'#d98a48', outer:'#b9743c', water:'#4aa9de', bg:'#d98a48', decor:'sand',
-  rock:'#c66a37', rockTop:'#e2965b', steel:'#9c5a32', steelTop:'#b87a4a',
-  bush:['#e7c24a','#d4a52e','#f0d264'] };                 // yellow "hay"
+  rock:'#c87840', rockTop:'#e8ac6a', steel:'#7a7a8a', steelTop:'#a4a4bc',
+  bush:['#e7c24a','#d4a52e','#f0d264'] };                 // sandstone walls, dry-hay bush
 const THEME_ACID   = { ground:'#3b2f4d', outer:'#2a2238', water:'#56c878', bg:'#3b2f4d', decor:'dark',
-  rock:'#5a5a70', rockTop:'#6e6e86', steel:'#3f3f52', steelTop:'#52526a',
-  bush:['#3f8f3a','#357d30','#4aa345'] };                 // green
+  rock:'#4a5a3a', rockTop:'#6a7a5a', steel:'#7a7a8a', steelTop:'#a4a4bc',
+  bush:['#3acfb0','#2aac94','#5adfc5'] };                 // mossy walls, teal crystalline bush
 const THEME_OASIS  = { ground:'#e0c187', outer:'#c3aa68', water:'#4aa9de', bg:'#e0c187', decor:'sand',
-  rock:'#b98a4e', rockTop:'#d8b072', steel:'#8f6a3c', steelTop:'#ad8654',
-  bush:['#46a336','#3d942d','#55b545'] };                 // green hedge
+  rock:'#e898b0', rockTop:'#f5b8c8', steel:'#7a7a8a', steelTop:'#a4a4bc',
+  bush:['#46a336','#3d942d','#55b545'] };                 // pastel-pink walls, green hedge bush
 
 let currentMapIdx = 0;
 
@@ -2939,6 +2939,8 @@ class MapRenderer3D {
     this.root=null;
     this.steelMesh=null;    // InstancedMesh for T_STEEL body (indestructible, static)
     this.steelCapMesh=null; // InstancedMesh for the flat plateau cap on T_STEEL
+    this.steelCrossH=null;  // InstancedMesh for the white cross stripe (horizontal)
+    this.steelCrossV=null;  // InstancedMesh for the white cross stripe (vertical)
     this.wallGroups=new Map(); // tileIndex → {group,tx,ty} for T_WALL (breakable)
     this.boxes=new Map();   // tileIndex → {group, gem, tx, ty}
     this.bushes=[];
@@ -2975,19 +2977,30 @@ class MapRenderer3D {
     if (steelIdx.length>0) {
       this.steelMesh=new THREE.InstancedMesh(G3.roundBox, this.lambert(theme.steel), steelIdx.length);
       this.steelCapMesh=new THREE.InstancedMesh(G3.roundBox, this.lambert(theme.steelTop), steelIdx.length);
+      // Белый крест/сетка на грани каждого блока (как IMG_4963)
+      this.steelCrossH=new THREE.InstancedMesh(G3.box, this.lambert('#dcdcf0'), steelIdx.length);
+      this.steelCrossV=new THREE.InstancedMesh(G3.box, this.lambert('#dcdcf0'), steelIdx.length);
       const dummy=new THREE.Object3D();
       steelIdx.forEach((idx,i)=>{
         const tx=idx%MAP_COLS, ty=Math.floor(idx/MAP_COLS);
         dummy.position.set(tx*TILE+TILE/2, 14, ty*TILE+TILE/2);
-        dummy.scale.set(36,28,36); dummy.updateMatrix();
+        dummy.scale.set(38,28,38); dummy.updateMatrix();
         this.steelMesh.setMatrixAt(i,dummy.matrix);
         dummy.position.set(tx*TILE+TILE/2, 27, ty*TILE+TILE/2);
-        dummy.scale.set(37,4,37); dummy.updateMatrix();
+        dummy.scale.set(39,4,39); dummy.updateMatrix();
         this.steelCapMesh.setMatrixAt(i,dummy.matrix);
+        // крест поверх шапки
+        dummy.position.set(tx*TILE+TILE/2, 30, ty*TILE+TILE/2);
+        dummy.scale.set(34,2,8); dummy.updateMatrix();
+        this.steelCrossH.setMatrixAt(i,dummy.matrix);
+        dummy.scale.set(8,2,34); dummy.updateMatrix();
+        this.steelCrossV.setMatrixAt(i,dummy.matrix);
       });
       this.steelMesh.castShadow=true; this.steelMesh.receiveShadow=true;
       this.steelCapMesh.castShadow=true; this.steelCapMesh.receiveShadow=true;
-      this.root.add(this.steelMesh, this.steelCapMesh);
+      this.steelCrossH.instanceMatrix.needsUpdate=true;
+      this.steelCrossV.instanceMatrix.needsUpdate=true;
+      this.root.add(this.steelMesh, this.steelCapMesh, this.steelCrossH, this.steelCrossV);
     }
 
     // Обычные стены T_WALL — скалы-плато (ломаются ультами — индивидуальные меши)
@@ -2996,11 +3009,11 @@ class MapRenderer3D {
         if (tileMap.tileAt(tx2,ty2)!==T_WALL) continue;
         const grp=new THREE.Group();
         const body=new THREE.Mesh(G3.roundBox, this.lambert(theme.rock));
-        body.scale.set(34,26,34); body.position.y=13;
+        body.scale.set(38,26,38); body.position.y=13;
         body.castShadow=true; body.receiveShadow=true;
         grp.add(body);
         const cap=new THREE.Mesh(G3.roundBox, this.lambert(theme.rockTop));
-        cap.scale.set(35,4,35); cap.position.y=25;
+        cap.scale.set(39,4,39); cap.position.y=25;
         cap.castShadow=true; cap.receiveShadow=true;
         grp.add(cap);
         grp.position.set(tx2*TILE+TILE/2, 0, ty2*TILE+TILE/2);
@@ -3057,16 +3070,39 @@ class MapRenderer3D {
         } else if (t===T_BUSH) {
           const hsh=tileHash(tx,ty);
           const grp=new THREE.Group();
-          const mkBlob=(c,r,ox,oz,h)=>{
-            const m=new THREE.Mesh(G3.sphere, this.lambert(c));
-            m.scale.set(r,h,r); m.position.set(ox,h*0.55,oz);
-            m.castShadow=true;
-            grp.add(m);
-          };
           const bc=theme.bush;
-          mkBlob(bc[0],34,0,0,26);
-          mkBlob(bc[1],19,-18+(hsh%18),-16+((hsh>>4)%16),20);
-          mkBlob(bc[2],15,12-((hsh>>6)%16),10-((hsh>>8)%14),23);
+          // Спайковый/кристаллический куст (как IMG_4962): плоское основание +
+          // плотное поле острых конусов, заполняющее почти весь тайл (впритык).
+          const base=new THREE.Mesh(G3.sphere, this.lambert(bc[0]));
+          base.scale.set(20,8,20); base.position.y=5;
+          base.castShadow=true;
+          grp.add(base);
+          const mkSpike=(c,ox,oz,h,r,lean,leanA)=>{
+            const sp=new THREE.Mesh(G3.cone, this.lambert(c));
+            sp.scale.set(r,h,r);
+            sp.position.set(ox,h*0.5+2,oz);
+            sp.rotation.order='YXZ';
+            sp.rotation.y=leanA;
+            sp.rotation.x=lean;
+            sp.castShadow=true;
+            grp.add(sp);
+          };
+          // Центральный высокий шип
+          mkSpike(bc[0], 0, 0, 20+((hsh>>2)%6), 5, 0, 0);
+          // Сетка 3×3 шипов с детерминированным разбросом, наклон наружу
+          let bit=0;
+          for (let gz=-1; gz<=1; gz++)
+            for (let gx=-1; gx<=1; gx++) {
+              if (gx===0&&gz===0) continue;
+              const jx=((hsh>>(bit)) % 7) - 3;
+              const jz=((hsh>>(bit+2)) % 7) - 3;
+              bit+=3;
+              const ox=gx*12+jx, oz=gz*12+jz;
+              const h=13+((hsh>>(bit))%7);
+              const c=bc[1+((gx+gz+2)%2)];
+              const a=Math.atan2(ox,oz);
+              mkSpike(c, ox, oz, h, 3.4, 0.28, a);
+            }
           grp.position.set(x,0,z);
           this.root.add(grp);
           this.bushes.push({group:grp, phase:hsh%7});
@@ -4828,21 +4864,28 @@ class Game {
           continue;
         }
         if (t===T_STEEL) {
-          // Dark metallic indestructible rock
+          // Grey indestructible block with a white cross (IMG_4963), nearly flush
+          const th=tileMap.theme;
           ctx.fillStyle='rgba(0,0,0,0.2)';
-          ctx.beginPath(); ctx.roundRect(x+6,y+8,TILE-12,TILE-12,7); ctx.fill();
-          ctx.fillStyle='#3c3c50';
-          ctx.beginPath(); ctx.roundRect(x+6,y+6,TILE-12,TILE-12,7); ctx.fill();
-          ctx.fillStyle='#5a5a70';
-          ctx.beginPath(); ctx.roundRect(x+6,y+4,TILE-12,TILE-16,7); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+2,y+4,TILE-4,TILE-4,5); ctx.fill();
+          ctx.fillStyle=th.steel;
+          ctx.beginPath(); ctx.roundRect(x+2,y+2,TILE-4,TILE-4,5); ctx.fill();
+          ctx.fillStyle=th.steelTop;
+          ctx.beginPath(); ctx.roundRect(x+2,y+1,TILE-4,TILE-10,5); ctx.fill();
+          // white cross
+          ctx.strokeStyle='rgba(255,255,255,0.6)'; ctx.lineWidth=3; ctx.lineCap='butt';
+          const sc=x+TILE/2, scy=y+TILE/2;
+          ctx.beginPath(); ctx.moveTo(x+7,scy); ctx.lineTo(x+TILE-7,scy); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(sc,y+6); ctx.lineTo(sc,y+TILE-7); ctx.stroke();
         } else if (t===T_WALL) {
-          // Breakable rock wall (lighter than steel)
+          // Plain pastel breakable wall (IMG_4964), nearly flush
+          const th=tileMap.theme;
           ctx.fillStyle='rgba(0,0,0,0.13)';
-          ctx.beginPath(); ctx.roundRect(x+6,y+8,TILE-12,TILE-12,7); ctx.fill();
-          ctx.fillStyle='#9a9cae';
-          ctx.beginPath(); ctx.roundRect(x+6,y+6,TILE-12,TILE-12,7); ctx.fill();
-          ctx.fillStyle='#c6c8d6';
-          ctx.beginPath(); ctx.roundRect(x+6,y+4,TILE-12,TILE-16,7); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(x+2,y+4,TILE-4,TILE-4,7); ctx.fill();
+          ctx.fillStyle=th.rock;
+          ctx.beginPath(); ctx.roundRect(x+2,y+2,TILE-4,TILE-4,7); ctx.fill();
+          ctx.fillStyle=th.rockTop;
+          ctx.beginPath(); ctx.roundRect(x+2,y+1,TILE-4,TILE-10,7); ctx.fill();
         } else if (t===T_BOX) {
           // Regular box (brown) — breakable only by supers
           ctx.fillStyle='rgba(0,0,0,0.13)';
