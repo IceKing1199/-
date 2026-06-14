@@ -119,10 +119,10 @@
 // ============================================================
 
 const TILE      = 40;
-const MAP_COLS  = 60;
-const MAP_ROWS  = 60;
-const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
-const ARENA_HEIGHT = MAP_ROWS * TILE;   // 2400 (square map to match reference)
+const MAP_COLS  = 44;
+const MAP_ROWS  = 44;
+const ARENA_WIDTH  = MAP_COLS * TILE;   // 1760
+const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1760 (compact square arena)
 const CANVAS_WIDTH  = 800;
 const CANVAS_HEIGHT = 600;
 const VIEW_ZOOM = 1.5;                  // camera zoom-in: smaller visible world = bigger characters
@@ -254,47 +254,39 @@ const BRAWLER_CONFIGS = {
 // ── TILE MAP (left-right symmetric, 60×46, TILE=40) ──────────
 // .=empty  S=spawn  R=reinforced(indestructible)  X=wall(super only)
 // B=box(super only)  C=power-crate(any dmg+drop)  b=bush  W=water
-// Three maps; one chosen randomly each match via currentMapIdx.
+// Single map ("Desert"); selected via currentMapIdx.
 const MAP_LAYOUTS = (() => {
-  // Build a 60-char symmetric row from a 29-char left inner half.
+  // Build a 44-char symmetric row from a 21-char left inner half.
   const m = l => 'R' + l + [...l].reverse().join('') + 'R';
-  const BDR = 'R'.repeat(60);
-  // Build 60-row square map with top-bottom symmetry: [BDR, rows1..29] → mirror → 60 rows.
-  const sym = t => { const r=[...t]; for(let i=29;i>=1;i--) r.push(t[i]); r.push(BDR); return r; };
+  const BDR = 'R'.repeat(44);
+  // Build 44-row square map with top-bottom symmetry: [BDR, rows1..21] → mirror → 44 rows.
+  const sym = t => { const r=[...t]; for(let i=21;i>=1;i--) r.push(t[i]); r.push(BDR); return r; };
 
-  // Single hand-authored "Desert" map faithfully recreated from reference photo (IMG_4984).
-  // 4-fold symmetry: corner plus-lakes, central "()" water with island, staircase walls,
-  // yellow bush clusters, orange walls, brown barrels (B), green cacti obstacles (k).
+  // Compact 44x44 desert arena (hand-authored, 4-fold symmetric quadrant 21x21).
+  // Centerpiece: a wall-ringed power-crate VAULT with four 2-tile entrances (N/S/E/W).
+  // 8 water pools, bush stealth patches, scattered cacti, spawns at corners + edges.
   const desert = sym([BDR,
-    m('S.k........k..S.......k...Sk.'),
-    m('.............................'),
-    m('.....B.B......bbbb.XXXXXXXXX.'),
-    m('..............bbbb.XXXXXXXXX.'),
-    m('....k.........bbbXXXXXXXXX...'),
-    m('.......WWW....bbbXXXXXXXXX...'),
-    m('.......WWW....bXXXXXXXXX.k...'),
-    m('....WWWWWWWWW..XXXXXXXXX.....'),
-    m('....WWWWWWWWWXXXXXXXXX.......'),
-    m('....WWWWWWWWWXXXXXXXXX.......'),
-    m('.......WWW...................'),
-    m('.......WWW.....B....B...XXX.k'),
-    m('.bbbb..k......k.........XXX..'),
-    m('.bbbb....XXXXX...............'),
-    m('S........XXXXX..k.......WWXXX'),
-    m('WWW......X..bbbbb......WWWXXX'),
-    m('WWW..k...X..bbbbb.....WWWWXXX'),
-    m('WWW.........bbbbb....WWWWXXXX'),
-    m('WWW.........bbbbb...WWWW.XXXX'),
-    m('WWW.......k.........WWWW.XCCC'),
-    m('WWW...B.............WWWW.XCCC'),
-    m('.bbbb...............WWWW.XCCC'),
-    m('.bbbb...........bbbbWWWW.XCCC'),
-    m('WWW......XXXX...bbbbWWWW.XCCC'),
-    m('WWW......XXXX...bbbbWWWWkXCCC'),
-    m('WWW..........k..bbbbWWWW.XCCC'),
-    m('WWW.....k.......bbbbbWWWWXCCC'),
-    m('WWWbSk................WWWXCCC'),
-    m('.bbb........k..........WWXXXX'),
+    m('.....................'),
+    m('.S........S..........'),
+    m('.........k.....WWW...'),
+    m('...k.........bbWWW...'),
+    m('.............bbWWW...'),
+    m('..................k..'),
+    m('......bbb.......k....'),
+    m('......bbb............'),
+    m('......bbb............'),
+    m('..k........k.........'),
+    m('.S........B......k...'),
+    m('.........k...........'),
+    m('.....................'),
+    m('...bb.........k......'),
+    m('...bb........k.......'),
+    m('..WWW..........k.....'),
+    m('..WWW.k..............'),
+    m('..WWW.....k......XXX.'),
+    m('.....k...........X...'),
+    m('.................X...'),
+    m('....................C'),
   ]);
 
   return [
@@ -1517,8 +1509,7 @@ class Brawler {
     if (this.reloadTimer<=0) this.reloadTimer=this.config.reload;
     this.shootFlash=4; this.revealTimer=60;
     this.firedMelee=false;
-    const angryMult=(!this.isPlayer&&game&&game.matchEvent&&game.matchEvent.type==='angryBots')?1.3:1;
-    const dmg=this.config.damage*this.damageMult*angryMult;
+    const dmg=this.config.damage*this.damageMult;
     if (this.type==='colt') {
       this.burst={ left:this.config.bulletCount, angle:this.angle, timer:1,
                    isSuper:false, damage:dmg, range:this.config.range };
@@ -1829,7 +1820,7 @@ class Brawler {
     return false;
   }
   chargeSuper(dmg) {
-    const rate=this.config.superChargeRate*(game&&game.matchEvent&&game.matchEvent.type==='superMadness'?2:1);
+    const rate=this.config.superChargeRate;
     this.superCharge=Math.min(this.maxSuperCharge, this.superCharge+dmg*rate);
     if (this.hyperCharge<this.maxHyperCharge)
       this.hyperCharge=Math.min(this.maxHyperCharge, this.hyperCharge+dmg*this.config.superChargeRate*0.4);
@@ -2572,7 +2563,7 @@ class PowerCube {
 // ── POISON ZONE (shrinking showdown cloud) ──────────────────
 class PoisonZone {
   constructor() {
-    this.ring=0; this.maxRing=20; // each ring=40px (TILE), 20×40=800px total shrink per side
+    this.ring=0; this.maxRing=16; // each ring=40px (TILE); final safe zone = 44-2*16 = 12 tiles
     this.nextShrinkSec=20; this.shrinkInterval=10;
     this.warnTimer=0; this.tickTimer=0;
   }
@@ -2825,8 +2816,7 @@ class Renderer3D {
 
     this.scene=new THREE.Scene();
     const _initBg=tileMap.theme.bg;
-    this._dayBg=new THREE.Color(_initBg); this._nightBg=new THREE.Color('#2a4030');
-    this._dayAmb=new THREE.Color('#ffffff'); this._nightAmb=new THREE.Color('#8090c8');
+    this._dayBg=new THREE.Color(_initBg);
     this.scene.background=this._dayBg.clone();
     this.scene.fog=new THREE.Fog(this._dayBg.clone(),1400,3200);
 
@@ -2836,8 +2826,8 @@ class Renderer3D {
     const pitch=55*Math.PI/180, L=800/VIEW_ZOOM;
     this.camH=Math.sin(pitch)*L; this.camD=Math.cos(pitch)*L;
 
-    this.ambient=new THREE.AmbientLight(0xffffff,0.38);
-    this.sun=new THREE.DirectionalLight(0xfffae0,0.95);
+    this.ambient=new THREE.AmbientLight(0xffffff,0.55);
+    this.sun=new THREE.DirectionalLight(0xfffae0,0.7);
     this.sun.castShadow=true;
     const sm=IS_TOUCH?1024:2048;
     this.sun.shadow.mapSize.set(sm,sm);
@@ -2883,13 +2873,6 @@ class Renderer3D {
     // Солнце следует за камерой, чтобы теневая зона покрывала экран
     this.sun.position.set(cx-550, 380, cz-350);
     this.sun.target.position.set(cx, 0, cz);
-    // День/ночь — светом вместо тёмного оверлея
-    const k=Math.max(0,Math.sin(game.dayPhase*Math.PI));
-    this.sun.intensity=lerp(0.7,0.16,k);
-    this.ambient.intensity=lerp(0.55,0.4,k);
-    this.ambient.color.lerpColors(this._dayAmb,this._nightAmb,k);
-    this.scene.background.lerpColors(this._dayBg,this._nightBg,k);
-    if(this.scene.fog) this.scene.fog.color.copy(this.scene.background);
 
     this.mapR.update(game);
     this.charR.sync(game);
@@ -3792,9 +3775,7 @@ class Game {
     this.gameOverDelay=0;
     this.mmCanvas=null; this.mmVersion=-1; // minimap tile cache
     this.player=null;
-    this.matchEvent=null; this.nextEventTimer=2700;
     this.playerStats={damageDealt:0,damageReceived:0,shotsFired:0,shotsHit:0,timeAlive:0};
-    this.dayPhase=0; this.lastDayPhase=0; this.stars=[];
     this.camera={x:0,y:0};
     this.keys={};
     this.mouse={x:0,y:0,down:false};
@@ -4069,12 +4050,9 @@ class Game {
     this.frameCount=0;
     this.touchAimMode=null;
     this.gameOverDelay=0;
-    this.matchEvent=null; this.nextEventTimer=2700;
     this.playerStats={damageDealt:0,damageReceived:0,shotsFired:0,shotsHit:0,timeAlive:0};
-    this.dayPhase=0; this.lastDayPhase=0;
-    this.stars=Array.from({length:30},()=>({x:rand(0,ARENA_WIDTH),y:rand(0,ARENA_HEIGHT),r:rand(0.3,1.2)}));
 
-    // Shuffle the map spawn points (12 available); player takes one, bots take the rest
+    // Shuffle the map spawn points; player takes one, bots take the rest (cycling if fewer)
     const spawns=[...tileMap.spawnPoints];
     for (let i=spawns.length-1;i>0;i--) {
       const j=randInt(0,i); [spawns[i],spawns[j]]=[spawns[j],spawns[i]];
@@ -4377,31 +4355,8 @@ class Game {
     }
     this.cubes=this.cubes.filter(c=>c.active);
 
-    // Day/Night
-    this.dayPhase=(this.frameCount%7200)/7200;
-    const newDP=this.dayPhase;
-    if (this.lastDayPhase<0.15&&newDP>=0.15)
-      this.addEventBanner('🌙 Наступает ночь','#334');
-    else if (this.lastDayPhase<0.85&&newDP>=0.85)
-      this.addEventBanner('☀️ Рассвет','#f9c74f');
-    this.lastDayPhase=newDP;
-
-    // Match events
-    if (this.countdown===0) {
-      if (--this.nextEventTimer<=0) {
-        this.nextEventTimer=1800+Math.floor(rand(0,600));
-        this.spawnMatchEvent();
-      }
-      if (this.matchEvent&&--this.matchEvent.timer<=0) this.matchEvent=null;
-      // healing rain
-      if (this.matchEvent&&this.matchEvent.type==='healingRain') {
-        for (const b of this.brawlers) {
-          if (b.alive) b.hp=Math.min(b.maxHp,b.hp+80/60);
-        }
-      }
-      // player stats: time alive
-      if (this.player&&this.player.alive) this.playerStats.timeAlive++;
-    }
+    // player stats: time alive
+    if (this.countdown===0 && this.player && this.player.alive) this.playerStats.timeAlive++;
 
     // Update projectiles & entities
     for (const b of this.bullets) b.update();
@@ -4582,19 +4537,6 @@ class Game {
   addKill(killerName, victimName) {
     this.killFeed.unshift({k:killerName, v:victimName, timer:240});
     if (this.killFeed.length>4) this.killFeed.pop();
-  }
-  addEventBanner(text, color) {
-    this.eventBanner={text, color, timer:180, maxTimer:180};
-    this.sound.play('event');
-  }
-  spawnMatchEvent() {
-    const types=['superMadness','healingRain','angryBots'];
-    const type=types[Math.floor(rand(0,types.length))];
-    const dur=type==='superMadness'?900:type==='healingRain'?600:1200;
-    this.matchEvent={type, timer:dur, maxTimer:dur};
-    const labels={superMadness:'⚡ Супер-безумие!',healingRain:'💧 Исцеляющий дождь',angryBots:'😡 Злые боты'};
-    const colors={superMadness:'#f9c74f',healingRain:'#56cfe1',angryBots:'#e63946'};
-    this.addEventBanner(labels[type], colors[type]);
   }
 
   // ── RENDER ────────────────────────────────────────────────
@@ -4984,18 +4926,6 @@ class Game {
     // Poison cloud
     this.poison.render(ctx);
 
-    // Day/Night overlay
-    const darkAlpha=0.38*Math.sin(this.dayPhase*Math.PI);
-    if (darkAlpha>0.02) {
-      ctx.fillStyle=`rgba(0,0,30,${darkAlpha})`; ctx.fillRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
-      if (darkAlpha>0.08) {
-        for (const st of this.stars) {
-          ctx.fillStyle=`rgba(255,255,255,${Math.min(1,darkAlpha*2.5)})`;
-          ctx.beginPath(); ctx.arc(st.x,st.y,1.5+st.r*0.5,0,TAU); ctx.fill();
-        }
-      }
-    }
-
     // Slow zones (translucent teal circles)
     for (const sz of this.slowZones) {
       ctx.save();
@@ -5084,31 +5014,6 @@ class Game {
       ctx.textAlign='center'; ctx.textBaseline='middle';
       ctx.fillText('☠ Ядовитое облако сужается!',w/2,60);
       ctx.restore();
-    }
-
-    // Match event banner
-    if (this.eventBanner&&this.state===GameState.PLAYING) {
-      const eb=this.eventBanner;
-      eb.timer--;
-      if (eb.timer>0) {
-        const t=eb.timer/eb.maxTimer;
-        const sc=eb.timer>eb.maxTimer-20?lerp(0.5,1,1-(eb.timer-(eb.maxTimer-20))/20):
-                 t<0.15?lerp(0,1,t/0.15):1;
-        const alpha=t<0.2?t/0.2:1;
-        const yOff=eb.timer<30?lerp(0,-20,(30-eb.timer)/30):0;
-        ctx.save();
-        ctx.globalAlpha=alpha;
-        ctx.translate(w/2,80+yOff);
-        ctx.scale(sc,sc);
-        ctx.fillStyle=eb.color||'#f9c74f';
-        ctx.beginPath(); ctx.roundRect(-145,-16,290,32,10); ctx.fill();
-        ctx.fillStyle='#fff'; ctx.font=uiFont(14);
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(eb.text,0,0);
-        ctx.restore();
-      } else {
-        this.eventBanner=null;
-      }
     }
 
     this.renderHUD(ctx,w,h);
