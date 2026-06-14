@@ -149,10 +149,17 @@ const SOLID_INSET = 7; // collision rects are inset inside the 40px tile so char
                        // (esp. Bull, r=22) can pass 1-tile gaps and don't wedge; also
                        // matches the smaller visual cubes
 
-// Map themes — control ground colour, water colour, sky/fog, and tile decor style
-const THEME_DESERT = { ground:'#e3c590', outer:'#cdb079', water:'#4aa9de', bg:'#dfc08a', decor:'sand' };
-const THEME_ACID   = { ground:'#3b2f4d', outer:'#2a2238', water:'#56c878', bg:'#3b2f4d', decor:'dark' };
-const THEME_OASIS  = { ground:'#dcc78f', outer:'#c3aa68', water:'#4aa9de', bg:'#d8c080', decor:'sand' };
+// Map themes — control ground/water/sky colours, decor style, and the rock & bush
+// palettes so each map matches its Brawl Stars look (desert/acid/oasis).
+const THEME_DESERT = { ground:'#d98a48', outer:'#b9743c', water:'#4aa9de', bg:'#d98a48', decor:'sand',
+  rock:'#c66a37', rockTop:'#e2965b', steel:'#9c5a32', steelTop:'#b87a4a',
+  bush:['#e7c24a','#d4a52e','#f0d264'] };                 // yellow "hay"
+const THEME_ACID   = { ground:'#3b2f4d', outer:'#2a2238', water:'#56c878', bg:'#3b2f4d', decor:'dark',
+  rock:'#5a5a70', rockTop:'#6e6e86', steel:'#3f3f52', steelTop:'#52526a',
+  bush:['#3f8f3a','#357d30','#4aa345'] };                 // green
+const THEME_OASIS  = { ground:'#e0c187', outer:'#c3aa68', water:'#4aa9de', bg:'#e0c187', decor:'sand',
+  rock:'#b98a4e', rockTop:'#d8b072', steel:'#8f6a3c', steelTop:'#ad8654',
+  bush:['#46a336','#3d942d','#55b545'] };                 // green hedge
 
 let currentMapIdx = 0;
 
@@ -2001,18 +2008,26 @@ class Brawler {
   }
   renderHpBar(ctx, sx, sy) {
     const big=this.isPlayer;
-    const bw=big?46:36, bh=big?7:5, bx=sx-bw/2, by=sy-this.radius-(big?16:12);
+    const bw=big?46:38, bh=big?7:6, bx=sx-bw/2, by=sy-this.radius-(big?16:13);
     const r=Math.max(0,this.hp/this.maxHp);
     ctx.save();
+    ctx.textAlign='center';
+    // Name plate above the bar (BS-style): all brawlers, player in cyan
+    ctx.textBaseline='bottom';
+    ctx.font=uiFont(big?11:9);
+    ctx.lineWidth=3; ctx.strokeStyle='rgba(0,0,0,0.85)';
+    ctx.strokeText(this.config.name, sx, by-2);
+    ctx.fillStyle=big?'#00ffff':'#ffffff';
+    ctx.fillText(this.config.name, sx, by-2);
+    // HP bar
     ctx.fillStyle='rgba(0,0,0,0.55)';
     ctx.beginPath(); ctx.roundRect(bx-1,by-1,bw+2,bh+2,(bh+2)/2); ctx.fill();
     ctx.fillStyle=r>0.5?'#3ddc3d':r>0.25?'#ffaa00':'#ff4040';
     ctx.beginPath(); ctx.roundRect(bx,by,Math.max(bw*r,bh),bh,bh/2); ctx.fill();
-    if (big) {
-      ctx.fillStyle='#fff'; ctx.font=uiFont(6);
-      ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText(String(Math.ceil(this.hp)),sx,by+bh/2+0.5);
-    }
+    // HP number inside the bar (all brawlers)
+    ctx.fillStyle='#fff'; ctx.font=uiFont(big?6:5.5);
+    ctx.textBaseline='middle';
+    ctx.fillText(String(Math.ceil(this.hp)),sx,by+bh/2+0.5);
     ctx.restore();
   }
   // Ammo segments + super charge strip under the player
@@ -2895,7 +2910,8 @@ class MapRenderer3D {
   constructor(scene) {
     this.scene=scene;
     this.root=null;
-    this.steelMesh=null;    // InstancedMesh for T_STEEL (indestructible, static)
+    this.steelMesh=null;    // InstancedMesh for T_STEEL body (indestructible, static)
+    this.steelCapMesh=null; // InstancedMesh for the flat plateau cap on T_STEEL
     this.wallGroups=new Map(); // tileIndex → {group,tx,ty} for T_WALL (breakable)
     this.boxes=new Map();   // tileIndex → {group, gem, tx, ty}
     this.bushes=[];
@@ -2926,32 +2942,40 @@ class MapRenderer3D {
     outer.receiveShadow=true;
     this.root.add(outer);
 
-    // Укреплённые стены T_STEEL — InstancedMesh (никогда не ломаются, тёмный металл)
+    // Укреплённые стены T_STEEL — скалы-плато (тело + плоская «шапка»), InstancedMesh
     const steelIdx=[];
     for (let i=0;i<MAP_COLS*MAP_ROWS;i++) if (tileMap.grid[i]===T_STEEL) steelIdx.push(i);
     if (steelIdx.length>0) {
-      this.steelMesh=new THREE.InstancedMesh(G3.roundBox, this.lambert('#4a4a5e'), steelIdx.length);
+      this.steelMesh=new THREE.InstancedMesh(G3.roundBox, this.lambert(theme.steel), steelIdx.length);
+      this.steelCapMesh=new THREE.InstancedMesh(G3.roundBox, this.lambert(theme.steelTop), steelIdx.length);
       const dummy=new THREE.Object3D();
       steelIdx.forEach((idx,i)=>{
         const tx=idx%MAP_COLS, ty=Math.floor(idx/MAP_COLS);
         dummy.position.set(tx*TILE+TILE/2, 14, ty*TILE+TILE/2);
-        dummy.scale.set(30,28,30);
-        dummy.updateMatrix();
+        dummy.scale.set(30,28,30); dummy.updateMatrix();
         this.steelMesh.setMatrixAt(i,dummy.matrix);
+        dummy.position.set(tx*TILE+TILE/2, 27, ty*TILE+TILE/2);
+        dummy.scale.set(31,4,31); dummy.updateMatrix();
+        this.steelCapMesh.setMatrixAt(i,dummy.matrix);
       });
       this.steelMesh.castShadow=true; this.steelMesh.receiveShadow=true;
-      this.root.add(this.steelMesh);
+      this.steelCapMesh.castShadow=true; this.steelCapMesh.receiveShadow=true;
+      this.root.add(this.steelMesh, this.steelCapMesh);
     }
 
-    // Обычные стены T_WALL (ломаются ультами — индивидуальные меши для удаления)
+    // Обычные стены T_WALL — скалы-плато (ломаются ультами — индивидуальные меши)
     for (let ty2=0;ty2<MAP_ROWS;ty2++)
       for (let tx2=0;tx2<MAP_COLS;tx2++) {
         if (tileMap.tileAt(tx2,ty2)!==T_WALL) continue;
         const grp=new THREE.Group();
-        const body=new THREE.Mesh(G3.roundBox, this.lambert('#9a9cae'));
+        const body=new THREE.Mesh(G3.roundBox, this.lambert(theme.rock));
         body.scale.set(28,26,28); body.position.y=13;
         body.castShadow=true; body.receiveShadow=true;
         grp.add(body);
+        const cap=new THREE.Mesh(G3.roundBox, this.lambert(theme.rockTop));
+        cap.scale.set(29,4,29); cap.position.y=25;
+        cap.castShadow=true; cap.receiveShadow=true;
+        grp.add(cap);
         grp.position.set(tx2*TILE+TILE/2, 0, ty2*TILE+TILE/2);
         this.root.add(grp);
         this.wallGroups.set(ty2*MAP_COLS+tx2,{group:grp,tx:tx2,ty:ty2});
@@ -2964,15 +2988,40 @@ class MapRenderer3D {
         const x=tx*TILE+TILE/2, z=ty*TILE+TILE/2;
         if (t===T_BOX||t===T_CRATE) {
           const grp=new THREE.Group();
-          const body=new THREE.Mesh(G3.roundBox, this.lambert(t===T_CRATE?'#2ec8c8':'#9b8160'));
-          body.scale.set(26,24,26); body.position.y=12;
-          body.castShadow=true; body.receiveShadow=true;
-          grp.add(body);
+          const hshB=tileHash(tx,ty);
+          if (t===T_BOX && hshB%3===0) {
+            // Wooden barrel (visual variety; collision unchanged)
+            const barrel=new THREE.Mesh(G3.cyl, this.lambert('#b07636'));
+            barrel.scale.set(12,24,12); barrel.position.y=12;
+            barrel.castShadow=true; barrel.receiveShadow=true;
+            grp.add(barrel);
+            for (const hy of [7,17]) {
+              const hoop=new THREE.Mesh(G3.cyl, this.lambert('#7a5226'));
+              hoop.scale.set(12.6,2.5,12.6); hoop.position.y=hy;
+              grp.add(hoop);
+            }
+          } else {
+            // Wooden crate: body + lighter lid + dark cross-brace (BS-style)
+            const body=new THREE.Mesh(G3.roundBox, this.lambert(t===T_CRATE?'#b07c3e':'#c8924a'));
+            body.scale.set(26,24,26); body.position.y=12;
+            body.castShadow=true; body.receiveShadow=true;
+            grp.add(body);
+            const lid=new THREE.Mesh(G3.roundBox, this.lambert(t===T_CRATE?'#c89052':'#d9a85c'));
+            lid.scale.set(27,3,27); lid.position.y=24;
+            lid.castShadow=true; lid.receiveShadow=true;
+            grp.add(lid);
+            for (const a of [Math.PI/4,-Math.PI/4]) {
+              const slat=new THREE.Mesh(G3.box, this.lambert('#7a5226'));
+              slat.scale.set(34,3,5); slat.position.y=25; slat.rotation.y=a;
+              grp.add(slat);
+            }
+          }
           let gem=null;
           if (t===T_CRATE) {
-            gem=new THREE.Mesh(G3.oct, new THREE.MeshLambertMaterial({
-              color:new THREE.Color('#ffffff'), emissive:new THREE.Color('#00aaaa')}));
-            gem.scale.setScalar(8); gem.position.y=30;
+            // Glowing power cube floating above the crate
+            gem=new THREE.Mesh(G3.roundBox, new THREE.MeshLambertMaterial({
+              color:new THREE.Color('#bafcff'), emissive:new THREE.Color('#00c8c8')}));
+            gem.scale.setScalar(9); gem.position.y=34;
             grp.add(gem);
           }
           grp.position.set(x,0,z);
@@ -2987,9 +3036,10 @@ class MapRenderer3D {
             m.castShadow=true;
             grp.add(m);
           };
-          mkBlob('#46a336',32,0,0,26);
-          mkBlob('#3d942d',19,-18+(hsh%18),-16+((hsh>>4)%16),20);
-          mkBlob('#55b545',15,12-((hsh>>6)%16),10-((hsh>>8)%14),23);
+          const bc=theme.bush;
+          mkBlob(bc[0],32,0,0,26);
+          mkBlob(bc[1],19,-18+(hsh%18),-16+((hsh>>4)%16),20);
+          mkBlob(bc[2],15,12-((hsh>>6)%16),10-((hsh>>8)%14),23);
           grp.position.set(x,0,z);
           this.root.add(grp);
           this.bushes.push({group:grp, phase:hsh%7});
@@ -3078,7 +3128,7 @@ class MapRenderer3D {
       } else {
         e.group.scale.setScalar(1); // T_BOX: instant destroy, always full until gone
       }
-      if (e.gem) { e.gem.rotation.y+=0.03; e.gem.position.y=30+Math.sin(t*0.08)*2; }
+      if (e.gem) { e.gem.rotation.y+=0.03; e.gem.position.y=34+Math.sin(t*0.08)*2; }
     }
     // Кусты слегка колышутся
     for (const b of this.bushes)
@@ -4768,12 +4818,13 @@ class Game {
               break;
             }
           }
-          ctx.fillStyle='#46a336';
+          const bc=tileMap.theme.bush;
+          ctx.fillStyle=bc[0];
           dot(ctx,cx2+sway,cy2,18);
-          ctx.fillStyle='#3d942d';
+          ctx.fillStyle=bc[1];
           dot(ctx,x+11+(hsh%9)+sway, y+12+((hsh>>4)%8), 9);
           dot(ctx,x+26-((hsh>>6)%8)+sway, y+25-((hsh>>8)%7), 7);
-          ctx.fillStyle='#55b545';
+          ctx.fillStyle=bc[2];
           dot(ctx,x+17+((hsh>>10)%7)+sway*1.3, y+15+((hsh>>12)%9), 7);
         } else if (t===T_WATER) {
           // Seamless water: corners round only where exposed to land
@@ -4966,12 +5017,6 @@ class Game {
       }
       b.renderHpBar(ctx, top.x, top.y+b.radius+(b.isPlayer?16:12));
       if (b.isPlayer) {
-        ctx.save();
-        ctx.fillStyle='#00ffff'; ctx.font=uiFont(11);
-        ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.shadowColor='#000'; ctx.shadowBlur=3;
-        ctx.fillText('YOU',top.x,top.y-9);
-        ctx.restore();
         b.renderUnderHud(ctx, bottom.x, bottom.y+4-b.radius);
       } else if (b.superCharge>=b.maxSuperCharge) {
         ctx.save();
@@ -5156,12 +5201,12 @@ class Game {
     ctx.font=uiFont(22); ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText('⏱ '+tim,w/2,23); ctx.restore();
 
-    // Alive / cubes pill
+    // Brawlers-left / cubes pill
     ctx.save();
-    drawPill(ctx,w-134,6,124,34);
-    ctx.fillStyle='#ffd34d'; ctx.font=uiFont(18);
+    drawPill(ctx,w-168,6,158,34);
+    ctx.fillStyle='#ffd34d'; ctx.font=uiFont(16);
     ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(`⚔ ${this.aliveCount}   🧊 ${p.cubes}`,w-72,23); ctx.restore();
+    ctx.fillText(`Осталось: ${this.aliveCount}   🧊 ${p.cubes}`,w-89,23); ctx.restore();
 
     // Leaderboard: navy panel, yellow header strip
     const lbX=w-134,lbY=48,lbW=124;
