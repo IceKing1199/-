@@ -151,15 +151,15 @@ const SOLID_INSET = 7; // collision rects are inset inside the 40px tile so char
 
 // Map themes — control ground/water/sky colours, decor style, and the rock & bush
 // palettes so each map matches its Brawl Stars look (desert/acid/oasis).
-const THEME_DESERT = { ground:'#d98a48', outer:'#b9743c', water:'#4aa9de', bg:'#d98a48', decor:'sand',
+const THEME_DESERT = { ground:'#c4783a', outer:'#a05e2a', water:'#4aa9de', bg:'#c4783a', decor:'sand',
   rock:'#c87840', rockTop:'#e8ac6a', steel:'#7a7a8a', steelTop:'#a4a4bc',
   bush:['#e7c24a','#d4a52e','#f0d264'] };                 // sandstone walls, dry-hay bush
-const THEME_ACID   = { ground:'#3b2f4d', outer:'#2a2238', water:'#56c878', bg:'#3b2f4d', decor:'dark',
+const THEME_ACID   = { ground:'#1a1228', outer:'#120d1e', water:'#56c878', bg:'#1a1228', decor:'dark',
   rock:'#4a5a3a', rockTop:'#6a7a5a', steel:'#7a7a8a', steelTop:'#a4a4bc',
   bush:['#3acfb0','#2aac94','#5adfc5'] };                 // mossy walls, teal crystalline bush
-const THEME_OASIS  = { ground:'#e0c187', outer:'#c3aa68', water:'#4aa9de', bg:'#e0c187', decor:'sand',
+const THEME_OASIS  = { ground:'#c4a85a', outer:'#a08a40', water:'#4aa9de', bg:'#c4a85a', decor:'sand',
   rock:'#e898b0', rockTop:'#f5b8c8', steel:'#7a7a8a', steelTop:'#a4a4bc',
-  bush:['#46a336','#3d942d','#55b545'] };                 // pastel-pink walls, green hedge bush
+  bush:['#4cc83c','#3aaa2a','#62e050'] };                 // pastel-pink walls, vivid-green hedge bush
 
 let currentMapIdx = 0;
 
@@ -2864,8 +2864,8 @@ class Renderer3D {
     const pitch=55*Math.PI/180, L=800/VIEW_ZOOM;
     this.camH=Math.sin(pitch)*L; this.camD=Math.cos(pitch)*L;
 
-    this.ambient=new THREE.AmbientLight(0xffffff,0.55);
-    this.sun=new THREE.DirectionalLight(0xfff4d6,0.7);
+    this.ambient=new THREE.AmbientLight(0xffffff,0.38);
+    this.sun=new THREE.DirectionalLight(0xfffae0,0.95);
     this.sun.castShadow=true;
     const sm=IS_TOUCH?1024:2048;
     this.sun.shadow.mapSize.set(sm,sm);
@@ -2909,7 +2909,7 @@ class Renderer3D {
     this.camera.position.set(cx, this.camH, cz+this.camD);
     this.camera.lookAt(cx, 0, cz);
     // Солнце следует за камерой, чтобы теневая зона покрывала экран
-    this.sun.position.set(cx-300, 680, cz-160);
+    this.sun.position.set(cx-550, 380, cz-350);
     this.sun.target.position.set(cx, 0, cz);
     // День/ночь — светом вместо тёмного оверлея
     const k=Math.max(0,Math.sin(game.dayPhase*Math.PI));
@@ -3071,38 +3071,21 @@ class MapRenderer3D {
           const hsh=tileHash(tx,ty);
           const grp=new THREE.Group();
           const bc=theme.bush;
-          // Спайковый/кристаллический куст (как IMG_4962): плоское основание +
-          // плотное поле острых конусов, заполняющее почти весь тайл (впритык).
-          const base=new THREE.Mesh(G3.sphere, this.lambert(bc[0]));
-          base.scale.set(20,8,20); base.position.y=5;
-          base.castShadow=true;
-          grp.add(base);
-          const mkSpike=(c,ox,oz,h,r,lean,leanA)=>{
-            const sp=new THREE.Mesh(G3.cone, this.lambert(c));
-            sp.scale.set(r,h,r);
-            sp.position.set(ox,h*0.5+2,oz);
-            sp.rotation.order='YXZ';
-            sp.rotation.y=leanA;
-            sp.rotation.x=lean;
-            sp.castShadow=true;
-            grp.add(sp);
-          };
-          // Центральный высокий шип
-          mkSpike(bc[0], 0, 0, 20+((hsh>>2)%6), 5, 0, 0);
-          // Сетка 3×3 шипов с детерминированным разбросом, наклон наружу
-          let bit=0;
-          for (let gz=-1; gz<=1; gz++)
-            for (let gx=-1; gx<=1; gx++) {
-              if (gx===0&&gz===0) continue;
-              const jx=((hsh>>(bit)) % 7) - 3;
-              const jz=((hsh>>(bit+2)) % 7) - 3;
-              bit+=3;
-              const ox=gx*12+jx, oz=gz*12+jz;
-              const h=13+((hsh>>(bit))%7);
-              const c=bc[1+((gx+gz+2)%2)];
-              const a=Math.atan2(ox,oz);
-              mkSpike(c, ox, oz, h, 3.4, 0.28, a);
-            }
+          // 4×4 сетка сплюснутых сфер = плотные округлые блобы как в Brawl Stars
+          const BCOLS=4, BROWS=4;
+          for (let gi=0;gi<BROWS;gi++) for (let gj=0;gj<BCOLS;gj++) {
+            const jx=((hsh>>(gi*4+gj  ))&7)%5-2;
+            const jz=((hsh>>(gi*4+gj+2))&7)%5-2;
+            const ox=-14 + gj*9.5 + jx;
+            const oz=-14 + gi*9.5 + jz;
+            const r = 5.5 + ((hsh>>(gi*3+gj))&3)%3;
+            const hy= 5   + ((hsh>>(gi+gj+7))&3)%4;
+            const c = bc[(gi*BCOLS+gj)%3];
+            const m=new THREE.Mesh(G3.sphere, this.lambert(c));
+            m.scale.set(r, hy*0.55, r);
+            m.position.set(ox, hy*0.4, oz);
+            grp.add(m);
+          }
           grp.position.set(x,0,z);
           this.root.add(grp);
           this.bushes.push({group:grp, phase:hsh%7});
