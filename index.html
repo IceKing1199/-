@@ -120,9 +120,9 @@
 
 const TILE      = 40;
 const MAP_COLS  = 60;
-const MAP_ROWS  = 46;
+const MAP_ROWS  = 60;
 const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
-const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1840
+const ARENA_HEIGHT = MAP_ROWS * TILE;   // 2400 (square map to match reference)
 const CANVAS_WIDTH  = 800;
 const CANVAS_HEIGHT = 600;
 const VIEW_ZOOM = 1.5;                  // camera zoom-in: smaller visible world = bigger characters
@@ -143,7 +143,7 @@ const BOT_PARAMS = [
 const TAU = Math.PI * 2;
 
 // Tile types
-const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5, T_STEEL=6;
+const T_EMPTY=0, T_WALL=1, T_BOX=2, T_CRATE=3, T_BUSH=4, T_WATER=5, T_STEEL=6, T_CACTUS=7;
 const CRATE_HP = 2900; // only T_CRATE has HP; T_BOX/T_WALL destroyed instantly by supers
 const SOLID_INSET = 7; // collision rects are inset inside the 40px tile so characters
                        // (esp. Bull, r=22) can pass 1-tile gaps and don't wedge; also
@@ -153,7 +153,8 @@ const SOLID_INSET = 7; // collision rects are inset inside the 40px tile so char
 // palettes so each map matches its Brawl Stars look (desert/acid/oasis).
 const THEME_DESERT = { ground:'#c4783a', outer:'#a05e2a', water:'#4aa9de', bg:'#c4783a', decor:'sand',
   rock:'#c87840', rockTop:'#e8ac6a', steel:'#7a7a8a', steelTop:'#a4a4bc',
-  bush:['#e7c24a','#d4a52e','#f0d264'] };                 // sandstone walls, dry-hay bush
+  cactus:'#3f9a35', cactusTop:'#2f7a28', cactusFlower:'#e0473a',
+  bush:['#e7c24a','#d4a52e','#f0d264'] };                 // sandstone walls, dry-hay bush, green cactus
 const THEME_ACID   = { ground:'#1a1228', outer:'#120d1e', water:'#56c878', bg:'#1a1228', decor:'dark',
   rock:'#4a5a3a', rockTop:'#6a7a5a', steel:'#7a7a8a', steelTop:'#a4a4bc',
   bush:['#3acfb0','#2aac94','#5adfc5'] };                 // mossy walls, teal crystalline bush
@@ -258,88 +259,46 @@ const MAP_LAYOUTS = (() => {
   // Build a 60-char symmetric row from a 29-char left inner half.
   const m = l => 'R' + l + [...l].reverse().join('') + 'R';
   const BDR = 'R'.repeat(60);
-  // Build 46-row map with top-bottom symmetry: rows[0..22] → [0..22, 22..1, border]
-  const sym = t => { const r=[...t]; for(let i=22;i>=1;i--) r.push(t[i]); r.push(BDR); return r; };
+  // Build 60-row square map with top-bottom symmetry: [BDR, rows1..29] → mirror → 60 rows.
+  const sym = t => { const r=[...t]; for(let i=29;i>=1;i--) r.push(t[i]); r.push(BDR); return r; };
 
-  const truth = sym([BDR,
-    m('....BB..BB...................'),
-    m('....BB..BB.........bbb.......'),
-    m('.S.......BB......bbbbb.......'),
-    m('......BBB.........bbb........'),
-    m('......BBB........C.bb..bbb...'),
-    m('..WW....BB........bbb...bb...'),
-    m('..WW....BB....B....bbb.......'),
-    m('..WW..........B.....bb.bbb...'),
-    m('.........BBB........bbb.bb...'),
-    m('....BBB..........bbb.bb...C..'),
-    m('.....BBB..........bb.....BB..'),
-    m('..BB..BB........bbb.C........'),
-    m('..BB..BB.........bbb.....C...'),
-    m('.S.......BB.......bb......C..'),
-    m('.........BB....WW....bbb.....'),
-    m('.........BBB...WW.....bbb....'),
-    m('..........BBbb.WW....C.bb....'),
-    m('.........BB.bb.bbb...........'),
-    m('.......C..BB....bb.bbb.......'),
-    m('..........BB........bbb......'),
-    m('.....BB.......b.b....bb......'),
-    m('.S...BB.......bbb............'),
-  ]);
-
-  const acid = sym([BDR,
-    m('WWWWWWWW.....b...........C...'),
-    m('WWWWWWWW.....bb....bbb.......'),
-    m('.S..WWWW.....b......bbb......'),
-    m('....WWWW.....X.......bb......'),
-    m('....WWWW.....XX..............'),
-    m('....b.b...RRRR.bbb...........'),
-    m('.....b....RRR.bbbb...C.......'),
-    m('....bbb...RRR..bb....bbb.....'),
-    m('....bbb...RRR....bbb..bb.....'),
-    m('....WW....b....C.bbbbbb......'),
-    m('....WW....XXX....b...bb......'),
-    m('....WW....XXX........bbb.....'),
-    m('....b.....XXXb...b....bb.....'),
-    m('.S..b.......bb.....b.........'),
-    m('....b.............bbb..bbb...'),
-    m('....b......C..bbbbbb....bC...'),
-    m('....WW...bbb...bbb....B......'),
-    m('....WW...bbb....bb...........'),
-    m('.....b...bbb...C...bbb.......'),
-    m('.....b...X...C......bbbb.....'),
-    m('....bbb..X.....b......bb.....'),
-    m('.S..bbb..X.....bbb...........'),
-  ]);
-
-  const oasis = sym([BDR,
-    m('bbbbbbbbb....B.B.............'),
-    m('bbbbbbbb.....B.....bbb.......'),
-    m('.S.bbbbb.....B..bbb.bbb......'),
-    m('...bbbbbbb...B...bb..bb......'),
-    m('...bbbbbb....BB.....bbb......'),
-    m('...bbbbb.....BBB..C..bb......'),
-    m('....bbbb.....BBB....bbb......'),
-    m('....bbb.....BBB...C..bb......'),
-    m('.....bb..XXX.....C..bbb......'),
-    m('......b..XX...BB.....bbb.....'),
-    m('......b..XX...BB......bb.C...'),
-    m('......b.....BB.bbb...C.......'),
-    m('.......b....BB..bbbb.........'),
-    m('.S.........BB.....bbbb...C...'),
-    m('...........BB....C..bbbb.....'),
-    m('...........BB....b....bb.....'),
-    m('........WWW......bbb.........'),
-    m('........WWWbbb...bbb.........'),
-    m('..........C.bbb..bbbbb.......'),
-    m('..........C..bb...bbbbb......'),
-    m('...........C......bbbbb......'),
-    m('.S........C.......bbbbb......'),
+  // Single hand-authored "Desert" map recreated from the reference photo (IMG_4984),
+  // with 4-fold symmetry: corner cross-lakes, central twin-arc "()" water, yellow bush
+  // clusters, orange walls, brown barrels (B), green cacti obstacles (k), power crates (C).
+  const desert = sym([BDR,
+    m('.............................'),
+    m('.S.........S.........S.......'),
+    m('........BB.....bbb...........'),
+    m('............k.bbbbb....bb....'),
+    m('.....WW.......bbbbb...bbbb...'),
+    m('....WWWW.......bbb...kbbbb...'),
+    m('...WWWWWW..............bb....'),
+    m('...WWWWWW.B.............k....'),
+    m('....WWWW........k............'),
+    m('.....WW..k.........BB........'),
+    m('..............k..............'),
+    m('.S.......XXXXX.........k.....'),
+    m('.....k...X...................'),
+    m('......B..X........k..........'),
+    m('.........X.....X.............'),
+    m('...B.....X.....X.....B.......'),
+    m('...........k...X...k......k..'),
+    m('....XXXX.......X.............'),
+    m('........k....................'),
+    m('...k..............bbb........'),
+    m('............BB...bbbbb.......'),
+    m('.Sbbb.............bbb........'),
+    m('..bbb............k........WW.'),
+    m('..bbb....................WW..'),
+    m('......k...............k.WW...'),
+    m('..............k.........WW...'),
+    m('..........k.............WW.CC'),
+    m('........................WW.CC'),
+    m('.........................WWCC'),
   ]);
 
   return [
-    { name:'Truth',      theme:THEME_DESERT, rows:truth },
-    { name:'Acid Lakes', theme:THEME_ACID,   rows:acid  },
-    { name:'Oasis',      theme:THEME_OASIS,  rows:oasis },
+    { name:'Desert', theme:THEME_DESERT, rows:desert },
   ];
 })();
 
@@ -401,7 +360,7 @@ function buildTileMap() {
   const grid = new Uint8Array(MAP_COLS*MAP_ROWS);
   const boxHp = new Float32Array(MAP_COLS*MAP_ROWS);
   const spawnPoints = [];
-  const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER,'R':T_STEEL};
+  const CHAR_TILE = {'.':T_EMPTY,'S':T_EMPTY,'X':T_WALL,'B':T_BOX,'C':T_CRATE,'b':T_BUSH,'W':T_WATER,'R':T_STEEL,'k':T_CACTUS};
   for (let ty=0; ty<MAP_ROWS; ty++) {
     const row = rows[ty];
     if (row.length !== MAP_COLS)
@@ -425,8 +384,8 @@ function buildTileMap() {
       return grid[ty*MAP_COLS+tx];
     },
     tileAtWorld(x, y) { return this.tileAt(Math.floor(x/TILE), Math.floor(y/TILE)); },
-    isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER||t===T_STEEL; },
-    isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_STEEL; },
+    isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER||t===T_STEEL||t===T_CACTUS; },
+    isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_STEEL||t===T_CACTUS; },
     // Only checks the 2x2-3x3 tiles overlapping the circle.
     circleHitsSolid(x, y, r, solidFn) {
       const tx0=Math.floor((x-r)/TILE), tx1=Math.floor((x+r)/TILE);
@@ -443,10 +402,10 @@ function buildTileMap() {
     damageBox(tx, ty, dmg) {
       const i = ty*MAP_COLS+tx;
       const t = grid[i];
-      if (t===T_WALL||t===T_BOX) {
+      if (t===T_WALL||t===T_BOX||t===T_CACTUS) {
         // instant-destroy (only called when caller already checked breaksWalls/dash)
         grid[i]=T_EMPTY; this.version++;
-        return t===T_WALL ? 'wall' : 'box';
+        return t===T_WALL ? 'wall' : t===T_CACTUS ? 'cactus' : 'box';
       }
       if (t!==T_CRATE) return null; // T_STEEL and anything else: untouchable
       boxHp[i]-=dmg;
@@ -1095,8 +1054,8 @@ class Bullet {
         const broken=tileMap.damageBox(hit.tx,hit.ty,this.damage);
         if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
         if (this.pierces) return;
-      } else if ((hit.type===T_BOX||hit.type===T_WALL)&&this.breaksWalls) {
-        // Regular boxes/walls: only super bullets with breaksWalls=true (Shelly/Colt)
+      } else if ((hit.type===T_BOX||hit.type===T_WALL||hit.type===T_CACTUS)&&this.breaksWalls) {
+        // Regular boxes/walls/cacti: only super bullets with breaksWalls=true (Shelly/Colt)
         const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
         if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
         if (this.pierces) return; // Colt super pierces through
@@ -1517,8 +1476,8 @@ class Brawler {
     const nx=this.x+Math.cos(this.dashAngle)*this.config.chargeSpeed;
     const ny=this.y+Math.sin(this.dashAngle)*this.config.chargeSpeed;
     const hit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove);
-    if (hit && (hit.type===T_BOX||hit.type===T_CRATE||hit.type===T_WALL)) {
-      // Bull smashes regular boxes/crates/walls but stops at T_STEEL
+    if (hit && (hit.type===T_BOX||hit.type===T_CRATE||hit.type===T_WALL||hit.type===T_CACTUS)) {
+      // Bull smashes regular boxes/crates/walls/cacti but stops at T_STEEL
       const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
       if (broken&&game) game.onBoxDestroyed(hit.tx,hit.ty,broken);
     } else if (hit || nx<this.radius || nx>ARENA_WIDTH-this.radius
@@ -2955,6 +2914,7 @@ class MapRenderer3D {
     this.steelCrossH=null;  // InstancedMesh for the white cross stripe (horizontal)
     this.steelCrossV=null;  // InstancedMesh for the white cross stripe (vertical)
     this.wallGroups=new Map(); // tileIndex → {group,tx,ty} for T_WALL (breakable)
+    this.cactusGroups=new Map(); // tileIndex → {group,tx,ty} for T_CACTUS (breakable obstacle)
     this.boxes=new Map();   // tileIndex → {group, gem, tx, ty}
     this.bushes=[];
     this.water=[];          // {mesh, geom, wx, wz}
@@ -2966,7 +2926,7 @@ class MapRenderer3D {
   build(game) {
     if (this.root) { this.scene.remove(this.root); disposeGroupMats(this.root); }
     this.root=new THREE.Group();
-    this.boxes.clear(); this.wallGroups.clear(); this.bushes.length=0; this.water.length=0;
+    this.boxes.clear(); this.wallGroups.clear(); this.cactusGroups.clear(); this.bushes.length=0; this.water.length=0;
     const theme = tileMap.theme;
 
     // Земля: текстура из 2D-декора тайлов (травинки, цветы, камешки)
@@ -3116,6 +3076,40 @@ class MapRenderer3D {
           grp.position.set(x,0,z);
           this.root.add(grp);
           this.bushes.push({group:grp, phase:hsh%7});
+        } else if (t===T_CACTUS) {
+          // Зелёный кактус-препятствие: вытянутое тело + руки + красный цветок сверху
+          const hsh=tileHash(tx,ty);
+          const grp=new THREE.Group();
+          const bodyMat=this.lambert(theme.cactus||'#3f9a35');
+          const topMat=this.lambert(theme.cactusTop||'#2f7a28');
+          const trunk=new THREE.Mesh(G3.cyl, bodyMat);
+          trunk.scale.set(7,26,7); trunk.position.y=20; trunk.castShadow=true;
+          grp.add(trunk);
+          const cap=new THREE.Mesh(G3.sphere, topMat);
+          cap.scale.set(7,6,7); cap.position.y=33; cap.castShadow=true;
+          grp.add(cap);
+          // 1-2 руки в стороны (детерминированно по хэшу)
+          const armSide=(hsh&1)?1:-1;
+          const arm=new THREE.Mesh(G3.cyl, bodyMat);
+          arm.scale.set(4,9,4); arm.position.set(7*armSide,22,0);
+          arm.rotation.z=-armSide*0.5; arm.castShadow=true;
+          grp.add(arm);
+          const armUp=new THREE.Mesh(G3.cyl, bodyMat);
+          armUp.scale.set(4,7,4); armUp.position.set(10*armSide,28,0); armUp.castShadow=true;
+          grp.add(armUp);
+          if (hsh&2) {
+            const arm2=new THREE.Mesh(G3.cyl, bodyMat);
+            arm2.scale.set(4,8,4); arm2.position.set(-7*armSide,18,0);
+            arm2.rotation.z=armSide*0.5; arm2.castShadow=true;
+            grp.add(arm2);
+          }
+          // красный цветок на макушке
+          const flower=new THREE.Mesh(G3.sphere, this.lambert(theme.cactusFlower||'#e0473a'));
+          flower.scale.setScalar(3.4); flower.position.y=37;
+          grp.add(flower);
+          grp.position.set(x,0,z);
+          this.root.add(grp);
+          this.cactusGroups.set(ty*MAP_COLS+tx,{group:grp,tx,ty});
         } else if (t===T_WATER) {
           const geom=new THREE.PlaneGeometry(TILE,TILE,4,4).rotateX(-Math.PI/2);
           const mesh=new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
@@ -3225,6 +3219,13 @@ class MapRenderer3D {
       if (tileMap.grid[idx]!==T_WALL) {
         this.root.remove(e.group); disposeGroupMats(e.group);
         this.wallGroups.delete(idx);
+      }
+    }
+    // Кактусы T_CACTUS: удалять после разрушения (как стены)
+    for (const [idx,e] of this.cactusGroups) {
+      if (tileMap.grid[idx]!==T_CACTUS) {
+        this.root.remove(e.group); disposeGroupMats(e.group);
+        this.cactusGroups.delete(idx);
       }
     }
     // Ящики и крейты: T_CRATE уменьшается при повреждении, T_BOX мгновенно удаляется
@@ -4946,6 +4947,18 @@ class Game {
           dot(ctx,x+26-((hsh>>6)%8)+sway, y+25-((hsh>>8)%7), 7);
           ctx.fillStyle=bc[2];
           dot(ctx,x+17+((hsh>>10)%7)+sway*1.3, y+15+((hsh>>12)%9), 7);
+        } else if (t===T_CACTUS) {
+          // Green cactus obstacle with red flower top
+          const cx2=x+TILE/2;
+          ctx.fillStyle='rgba(0,0,0,0.13)';
+          ctx.beginPath(); ctx.ellipse(cx2,y+TILE-7,9,4,0,0,TAU); ctx.fill();
+          ctx.fillStyle=tileMap.theme.cactus||'#3f9a35';
+          ctx.beginPath(); ctx.roundRect(cx2-6,y+8,12,TILE-14,5); ctx.fill();
+          ctx.beginPath(); ctx.roundRect(cx2+4,y+15,8,9,4); ctx.fill();   // arm
+          ctx.fillStyle=tileMap.theme.cactusTop||'#2f7a28';
+          ctx.beginPath(); ctx.roundRect(cx2-6,y+8,12,6,5); ctx.fill();
+          ctx.fillStyle=tileMap.theme.cactusFlower||'#e0473a';
+          dot(ctx,cx2,y+9,3.5);
         } else if (t===T_WATER) {
           // Seamless water: corners round only where exposed to land
           const wN=tileMap.tileAt(tx,ty-1)===T_WATER, wS=tileMap.tileAt(tx,ty+1)===T_WATER;
