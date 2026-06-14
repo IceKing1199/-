@@ -125,7 +125,7 @@ const ARENA_WIDTH  = MAP_COLS * TILE;   // 2400
 const ARENA_HEIGHT = MAP_ROWS * TILE;   // 1840
 const CANVAS_WIDTH  = 800;
 const CANVAS_HEIGHT = 600;
-const VIEW_ZOOM = 1.25;                 // camera zoom-in: smaller visible world = bigger characters
+const VIEW_ZOOM = 1.5;                  // camera zoom-in: smaller visible world = bigger characters
 const MATCH_DURATION = 180;             // fail-safe; matches end by elimination
 const TOTAL_PLAYERS = 10;               // 1 player + 9 bots
 const DIFFICULTIES  = ['noob','medium','hard','hellish','divine','galactic'];
@@ -263,75 +263,75 @@ const MAP_LAYOUTS = (() => {
 
   const truth = sym([BDR,
     m('....BB..BB...................'),
-    m('....BB..BB...................'),
-    m('.S.......BB..................'),
-    m('......BBB....................'),
-    m('......BBB........C...........'),
-    m('..WW....BB...................'),
-    m('..WW....BB....B..............'),
-    m('..WW..........B..............'),
-    m('.........BBB.................'),
-    m('....BBB...................C..'),
-    m('.....BBB.................BB..'),
-    m('..BB..BB.....................'),
-    m('..BB..BB.................C...'),
-    m('.S.......BB...............C..'),
-    m('.........BB....WW............'),
-    m('.........BB....WW............'),
-    m('..........BB...WW....C.......'),
-    m('.........BB..................'),
-    m('.......C..BB.................'),
-    m('..........BB.................'),
-    m('.....BB.......b.b............'),
+    m('....BB..BB.........bbb.......'),
+    m('.S.......BB......bbbbb.......'),
+    m('......BBB.........bbb........'),
+    m('......BBB........C.bb..bbb...'),
+    m('..WW....BB........bbb...bb...'),
+    m('..WW....BB....B....bbb.......'),
+    m('..WW..........B.....bb.bbb...'),
+    m('.........BBB........bbb.bb...'),
+    m('....BBB..........bbb.bb...C..'),
+    m('.....BBB..........bb.....BB..'),
+    m('..BB..BB........bbb.C........'),
+    m('..BB..BB.........bbb.....C...'),
+    m('.S.......BB.......bb......C..'),
+    m('.........BB....WW....bbb.....'),
+    m('.........BBB...WW.....bbb....'),
+    m('..........BBbb.WW....C.bb....'),
+    m('.........BB.bb.bbb...........'),
+    m('.......C..BB....bb.bbb.......'),
+    m('..........BB........bbb......'),
+    m('.....BB.......b.b....bb......'),
     m('.S...BB.......bbb............'),
   ]);
 
   const acid = sym([BDR,
     m('WWWWWWWW.....b...........C...'),
-    m('WWWWWWWW.....bb..............'),
-    m('.S..WWWW.....b...............'),
-    m('....WWWW.....X...............'),
+    m('WWWWWWWW.....bb....bbb.......'),
+    m('.S..WWWW.....b......bbb......'),
+    m('....WWWW.....X.......bb......'),
     m('....WWWW.....XX..............'),
-    m('....b.b...RRRR...............'),
-    m('.....b....RRR........C.......'),
-    m('....bbb...RRR................'),
-    m('....bbb...RRR....bbb.........'),
-    m('....WW....b......bbb.........'),
-    m('....WW....XXX....b...........'),
-    m('....WW....XXX................'),
-    m('....b.....XXX....b...........'),
-    m('.S..b..............b.........'),
-    m('....b.............bbb........'),
-    m('....b......C.....bbb.....C...'),
-    m('....WW...bbb.................'),
-    m('....WW...bbb.................'),
-    m('.....b...bbb...C.............'),
-    m('.....b...X...C...............'),
-    m('....bbb..X.....b.............'),
+    m('....b.b...RRRR.bbb...........'),
+    m('.....b....RRR.bbbb...C.......'),
+    m('....bbb...RRR..bb....bbb.....'),
+    m('....bbb...RRR....bbb..bb.....'),
+    m('....WW....b....C.bbbbbb......'),
+    m('....WW....XXX....b...bb......'),
+    m('....WW....XXX........bbb.....'),
+    m('....b.....XXXb...b....bb.....'),
+    m('.S..b.......bb.....b.........'),
+    m('....b.............bbb..bbb...'),
+    m('....b......C..bbbbbb....bC...'),
+    m('....WW...bbb...bbb....B......'),
+    m('....WW...bbb....bb...........'),
+    m('.....b...bbb...C...bbb.......'),
+    m('.....b...X...C......bbbb.....'),
+    m('....bbb..X.....b......bb.....'),
     m('.S..bbb..X.....bbb...........'),
   ]);
 
   const oasis = sym([BDR,
     m('bbbbbbbbb....B.B.............'),
-    m('bbbbbbbb.....B...............'),
-    m('.S.bbbbb.....B...............'),
-    m('...bbbbbbb...B...............'),
-    m('...bbbbbb....BB..............'),
-    m('...bbbbb.....BBB.............'),
-    m('....bbbb.....BBB.............'),
-    m('....bbb.....BBB...C..........'),
-    m('.....bb..XXX.....C...........'),
-    m('......b..XX...BB.............'),
-    m('......b..XX...BB.........C...'),
-    m('......b.....BB.......C.......'),
-    m('.......b....BB...............'),
-    m('.S.........BB............C...'),
-    m('...........BB....C...........'),
-    m('...........BB....b...........'),
+    m('bbbbbbbb.....B.....bbb.......'),
+    m('.S.bbbbb.....B..bbb.bbb......'),
+    m('...bbbbbbb...B...bb..bb......'),
+    m('...bbbbbb....BB.....bbb......'),
+    m('...bbbbb.....BBB..C..bb......'),
+    m('....bbbb.....BBB....bbb......'),
+    m('....bbb.....BBB...C..bb......'),
+    m('.....bb..XXX.....C..bbb......'),
+    m('......b..XX...BB.....bbb.....'),
+    m('......b..XX...BB......bb.C...'),
+    m('......b.....BB.bbb...C.......'),
+    m('.......b....BB..bbbb.........'),
+    m('.S.........BB.....bbbb...C...'),
+    m('...........BB....C..bbbb.....'),
+    m('...........BB....b....bb.....'),
     m('........WWW......bbb.........'),
-    m('........WWW......bbb.........'),
-    m('..........C......bbbbb.......'),
-    m('..........C.......bbbbb......'),
+    m('........WWWbbb...bbb.........'),
+    m('..........C.bbb..bbbbb.......'),
+    m('..........C..bb...bbbbb......'),
     m('...........C......bbbbb......'),
     m('.S........C.......bbbbb......'),
   ]);
@@ -2417,48 +2417,75 @@ function tileHash(tx, ty) {
   return (h^(h>>16))>>>0;
 }
 
-// Sparse decor on empty tiles — style varies by theme.decor ('grass','sand','dark')
+// Dense surface detail on empty tiles — patches, cracks, pebbles, grass, tracks.
+// Style varies by theme.decor ('grass','sand','dark'). Drawn once into the ground
+// texture, so richer detail here is essentially free at runtime.
 function drawEmptyTileDecor(ctx,x,y,hsh,decor='grass') {
-  const d=hsh%19;
+  const d=hsh%11;
+  // Soft ground patch on most tiles for a non-flat, lived-in surface
+  if (d<6) {
+    const px=x+10+(hsh>>5)%24, py=y+10+(hsh>>9)%24;
+    const pr=8+(hsh>>3)%12;
+    ctx.fillStyle = decor==='sand' ? 'rgba(150,104,52,0.16)'
+                  : decor==='dark' ? 'rgba(30,22,44,0.28)'
+                  : 'rgba(70,110,52,0.16)';
+    ctx.beginPath(); ctx.ellipse(px,py,pr,pr*0.7,(hsh%6),0,TAU); ctx.fill();
+  }
   if (decor==='sand') {
-    // Occasional sand ripples and pebbles; no green grass
-    if (d===0||d===3) { // ripple lines
-      ctx.strokeStyle='rgba(160,120,60,0.25)'; ctx.lineWidth=1.5; ctx.lineCap='round';
-      const rx=x+8+(hsh>>5)%44, ry=y+12+(hsh>>9)%36;
-      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx+10,ry+1); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(rx+2,ry+5); ctx.lineTo(rx+8,ry+5); ctx.stroke();
-    } else if (d===9) { // small pebble
-      ctx.fillStyle='rgba(150,110,60,0.3)';
-      dot(ctx,x+18+(hsh>>5)%44,y+18+(hsh>>9)%44,3);
+    if (d===0||d===3||d===6) { // ripple lines
+      ctx.strokeStyle='rgba(150,108,54,0.28)'; ctx.lineWidth=1.5; ctx.lineCap='round';
+      const rx=x+8+(hsh>>5)%40, ry=y+12+(hsh>>9)%32;
+      ctx.beginPath(); ctx.moveTo(rx,ry); ctx.lineTo(rx+11,ry+1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(rx+2,ry+5); ctx.lineTo(rx+9,ry+5); ctx.stroke();
+    }
+    if (d===2||d===8) { // dry grass tufts (desert)
+      ctx.strokeStyle='rgba(196,164,70,0.55)'; ctx.lineWidth=1.5; ctx.lineCap='round';
+      const gx=x+16+(hsh>>5)%30, gy=y+22+(hsh>>9)%24;
+      ctx.beginPath();
+      ctx.moveTo(gx,gy); ctx.lineTo(gx-2,gy-7);
+      ctx.moveTo(gx+3,gy); ctx.lineTo(gx+5,gy-6);
+      ctx.moveTo(gx+6,gy); ctx.lineTo(gx+6,gy-8); ctx.stroke();
+    }
+    if (d===4||d===9) { // pebbles
+      ctx.fillStyle='rgba(120,86,46,0.4)';
+      dot(ctx,x+14+(hsh>>5)%30,y+14+(hsh>>9)%30,3);
+      dot(ctx,x+24+(hsh>>7)%22,y+26+(hsh>>11)%20,2);
     }
   } else if (decor==='dark') {
-    // Dark stone/alien ground — faint cracks and speckles
-    if (d===0||d===4) { // faint crack
-      ctx.strokeStyle='rgba(80,60,100,0.35)'; ctx.lineWidth=1; ctx.lineCap='round';
-      const cx2=x+10+(hsh>>5)%40, cy2=y+10+(hsh>>9)%40;
-      ctx.beginPath(); ctx.moveTo(cx2,cy2); ctx.lineTo(cx2+6+(hsh>>11)%8,cy2+4+(hsh>>13)%6); ctx.stroke();
-    } else if (d===10) { // speck
-      ctx.fillStyle='rgba(120,90,150,0.25)';
-      dot(ctx,x+20+(hsh>>5)%40,y+20+(hsh>>9)%40,2.5);
+    if (d===0||d===4||d===7) { // cracks
+      ctx.strokeStyle='rgba(90,70,120,0.4)'; ctx.lineWidth=1; ctx.lineCap='round';
+      const cx2=x+10+(hsh>>5)%32, cy2=y+10+(hsh>>9)%32;
+      ctx.beginPath(); ctx.moveTo(cx2,cy2);
+      ctx.lineTo(cx2+6+(hsh>>11)%9,cy2+4+(hsh>>13)%7);
+      ctx.lineTo(cx2+10+(hsh>>15)%8,cy2-2+(hsh>>17)%8); ctx.stroke();
+    }
+    if (d===2||d===8) { // glowing specks
+      ctx.fillStyle='rgba(120,200,140,0.3)';
+      dot(ctx,x+18+(hsh>>5)%28,y+18+(hsh>>9)%28,2);
+    }
+    if (d===5) { // dark pebble
+      ctx.fillStyle='rgba(40,32,58,0.5)';
+      dot(ctx,x+20+(hsh>>7)%24,y+22+(hsh>>11)%20,3);
     }
   } else { // 'grass' (default)
-    if (d===0) { // grass blades
+    if (d===0||d===6) { // grass blades
       ctx.strokeStyle='#6db546'; ctx.lineWidth=2; ctx.lineCap='round';
-      const gx=x+14+(hsh>>5)%52, gy=y+14+(hsh>>9)%52;
+      const gx=x+14+(hsh>>5)%40, gy=y+18+(hsh>>9)%34;
       ctx.beginPath();
       ctx.moveTo(gx,gy); ctx.lineTo(gx-3,gy-8);
       ctx.moveTo(gx+4,gy); ctx.lineTo(gx+6,gy-7);
-      ctx.moveTo(gx+8,gy); ctx.lineTo(gx+7,gy-9);
-      ctx.stroke();
-    } else if (d===5) { // flower
-      const fx2=x+16+(hsh>>5)%48, fy=y+16+(hsh>>9)%48;
+      ctx.moveTo(gx+8,gy); ctx.lineTo(gx+7,gy-9); ctx.stroke();
+    }
+    if (d===3) { // flower
+      const fx2=x+16+(hsh>>5)%36, fy=y+16+(hsh>>9)%36;
       ctx.fillStyle='rgba(255,255,255,0.85)';
       dot(ctx,fx2-4,fy,3); dot(ctx,fx2+4,fy,3); dot(ctx,fx2,fy-4,3); dot(ctx,fx2,fy+4,3);
       ctx.fillStyle='#ffd34d'; dot(ctx,fx2,fy,2.6);
-    } else if (d===11) { // pebbles
+    }
+    if (d===8||d===9) { // pebbles
       ctx.fillStyle='rgba(110,130,110,0.4)';
-      dot(ctx,x+20+(hsh>>5)%40,y+20+(hsh>>9)%40,4);
-      dot(ctx,x+28+(hsh>>7)%30,y+30+(hsh>>11)%30,2.6);
+      dot(ctx,x+20+(hsh>>5)%30,y+20+(hsh>>9)%30,4);
+      dot(ctx,x+28+(hsh>>7)%22,y+30+(hsh>>11)%18,2.6);
     }
   }
 }
@@ -2952,10 +2979,10 @@ class MapRenderer3D {
       steelIdx.forEach((idx,i)=>{
         const tx=idx%MAP_COLS, ty=Math.floor(idx/MAP_COLS);
         dummy.position.set(tx*TILE+TILE/2, 14, ty*TILE+TILE/2);
-        dummy.scale.set(30,28,30); dummy.updateMatrix();
+        dummy.scale.set(36,28,36); dummy.updateMatrix();
         this.steelMesh.setMatrixAt(i,dummy.matrix);
         dummy.position.set(tx*TILE+TILE/2, 27, ty*TILE+TILE/2);
-        dummy.scale.set(31,4,31); dummy.updateMatrix();
+        dummy.scale.set(37,4,37); dummy.updateMatrix();
         this.steelCapMesh.setMatrixAt(i,dummy.matrix);
       });
       this.steelMesh.castShadow=true; this.steelMesh.receiveShadow=true;
@@ -2969,11 +2996,11 @@ class MapRenderer3D {
         if (tileMap.tileAt(tx2,ty2)!==T_WALL) continue;
         const grp=new THREE.Group();
         const body=new THREE.Mesh(G3.roundBox, this.lambert(theme.rock));
-        body.scale.set(28,26,28); body.position.y=13;
+        body.scale.set(34,26,34); body.position.y=13;
         body.castShadow=true; body.receiveShadow=true;
         grp.add(body);
         const cap=new THREE.Mesh(G3.roundBox, this.lambert(theme.rockTop));
-        cap.scale.set(29,4,29); cap.position.y=25;
+        cap.scale.set(35,4,35); cap.position.y=25;
         cap.castShadow=true; cap.receiveShadow=true;
         grp.add(cap);
         grp.position.set(tx2*TILE+TILE/2, 0, ty2*TILE+TILE/2);
@@ -2992,27 +3019,27 @@ class MapRenderer3D {
           if (t===T_BOX && hshB%3===0) {
             // Wooden barrel (visual variety; collision unchanged)
             const barrel=new THREE.Mesh(G3.cyl, this.lambert('#b07636'));
-            barrel.scale.set(12,24,12); barrel.position.y=12;
+            barrel.scale.set(15,25,15); barrel.position.y=12;
             barrel.castShadow=true; barrel.receiveShadow=true;
             grp.add(barrel);
-            for (const hy of [7,17]) {
+            for (const hy of [7,18]) {
               const hoop=new THREE.Mesh(G3.cyl, this.lambert('#7a5226'));
-              hoop.scale.set(12.6,2.5,12.6); hoop.position.y=hy;
+              hoop.scale.set(15.6,2.5,15.6); hoop.position.y=hy;
               grp.add(hoop);
             }
           } else {
             // Wooden crate: body + lighter lid + dark cross-brace (BS-style)
             const body=new THREE.Mesh(G3.roundBox, this.lambert(t===T_CRATE?'#b07c3e':'#c8924a'));
-            body.scale.set(26,24,26); body.position.y=12;
+            body.scale.set(32,24,32); body.position.y=12;
             body.castShadow=true; body.receiveShadow=true;
             grp.add(body);
             const lid=new THREE.Mesh(G3.roundBox, this.lambert(t===T_CRATE?'#c89052':'#d9a85c'));
-            lid.scale.set(27,3,27); lid.position.y=24;
+            lid.scale.set(33,3,33); lid.position.y=24;
             lid.castShadow=true; lid.receiveShadow=true;
             grp.add(lid);
             for (const a of [Math.PI/4,-Math.PI/4]) {
               const slat=new THREE.Mesh(G3.box, this.lambert('#7a5226'));
-              slat.scale.set(34,3,5); slat.position.y=25; slat.rotation.y=a;
+              slat.scale.set(42,3,6); slat.position.y=25; slat.rotation.y=a;
               grp.add(slat);
             }
           }
@@ -3037,7 +3064,7 @@ class MapRenderer3D {
             grp.add(m);
           };
           const bc=theme.bush;
-          mkBlob(bc[0],32,0,0,26);
+          mkBlob(bc[0],34,0,0,26);
           mkBlob(bc[1],19,-18+(hsh%18),-16+((hsh>>4)%16),20);
           mkBlob(bc[2],15,12-((hsh>>6)%16),10-((hsh>>8)%14),23);
           grp.position.set(x,0,z);
@@ -3052,6 +3079,46 @@ class MapRenderer3D {
           this.root.add(mesh);
         }
       }
+
+    // Декор-слой: камешки, трава, галька на пустых тайлах (НЕпроходимо, низко,
+    // через InstancedMesh — заполняет пустоту, не влияет на геймплей)
+    {
+      const rockCol=mixHex(theme.ground,'#3a2a18',0.5);
+      const grassCol=theme.bush[1];
+      const pebbleCol=theme.decor==='dark'?'#5a5168':'#9b8a6e';
+      const rocks=[], grasses=[], pebbles=[];
+      const dummy=new THREE.Object3D();
+      for (let ty=0;ty<MAP_ROWS;ty++)
+        for (let tx=0;tx<MAP_COLS;tx++) {
+          if (tileMap.tileAt(tx,ty)!==T_EMPTY) continue;
+          const h=tileHash(tx,ty);
+          if (h%100>=58) continue;                    // ~58% пустых тайлов получают проп
+          const ox=tx*TILE+8+(h%24), oz=ty*TILE+8+((h>>5)%24);
+          const ry=(h%360)*Math.PI/180;
+          const sv=0.75+((h>>9)%50)/100;
+          const kind=(h>>7)%10;
+          if (kind<4) {                               // камень (сплюснутый roundBox)
+            dummy.position.set(ox,2.5*sv,oz); dummy.rotation.set(0,ry,0);
+            dummy.scale.set(8*sv,5*sv,10*sv); dummy.updateMatrix(); rocks.push(dummy.matrix.clone());
+          } else if (kind<8) {                        // пучок травы (конус)
+            dummy.position.set(ox,4*sv,oz); dummy.rotation.set(0,ry,0);
+            dummy.scale.set(3.2*sv,8*sv,3.2*sv); dummy.updateMatrix(); grasses.push(dummy.matrix.clone());
+          } else {                                    // галька (сфера)
+            dummy.position.set(ox,1.6*sv,oz); dummy.rotation.set(0,ry,0);
+            dummy.scale.setScalar(3*sv); dummy.updateMatrix(); pebbles.push(dummy.matrix.clone());
+          }
+        }
+      const addInst=(geo,col,mats)=>{
+        if (!mats.length) return;
+        const im=new THREE.InstancedMesh(geo, this.lambert(col), mats.length);
+        mats.forEach((m,i)=>im.setMatrixAt(i,m));
+        im.castShadow=false; im.receiveShadow=true; im.instanceMatrix.needsUpdate=true;
+        this.root.add(im);
+      };
+      addInst(G3.roundBox, rockCol, rocks);
+      addInst(G3.cone, grassCol, grasses);
+      addInst(G3.sphere, pebbleCol, pebbles);
+    }
 
     // Бортик арены
     const bmat=this.lambert('#4a8620');
@@ -3371,8 +3438,8 @@ class CharacterRenderer3D {
     }
     md.group.position.set(b.x, lift, b.y);
     md.group.rotation.y=-b.angle;
-    // ×1.28: визуальный размер чуть больше хитбокса (как в Brawl Stars)
-    md.group.scale.setScalar((1-0.6*(b.spawnTimer/24))*1.28);
+    // ×1.55: визуальный размер заметно больше хитбокса (как в Brawl Stars)
+    md.group.scale.setScalar((1-0.6*(b.spawnTimer/24))*1.55);
     md.rig.position.y=Math.abs(Math.sin(b.walkPhase))*2.4*b.movingAmp;
     // Наклон вперёд: бег / рывок Булла / выпад Мортиса
     md.rig.rotation.z=-0.07*b.movingAmp-(b.isDashing?0.3:0)-(b.lungeTimer>0?0.38:0);
@@ -3415,7 +3482,7 @@ class CharacterRenderer3D {
       const md=this.ensure(bear, ()=>this.buildBear());
       md.group.position.set(bear.x,0,bear.y);
       md.group.rotation.y=-bear.angle;
-      md.group.scale.setScalar(1.25);
+      md.group.scale.setScalar(1.5);
       md.rig.position.y=Math.abs(Math.sin(bear.walkPhase))*2;
       const sw=Math.sin(bear.walkPhase)*0.12*md.R;
       md.legL.position.y=md.R*0.2+Math.max(0,sw);
