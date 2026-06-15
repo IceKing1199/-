@@ -4787,34 +4787,84 @@ function drawBearArt(ctx, x, y, scale, angle, anim) {
 
 // ── BS-STYLE UI KIT ──────────────────────────────────────────
 function drawBSBackground(ctx, w, h, t) {
-  ctx.fillStyle='#2a8fdd'; ctx.fillRect(0,0,w,h);
+  // Vertical sky gradient (light up top → richer blue down low)
+  const sky=ctx.createLinearGradient(0,0,0,h);
+  sky.addColorStop(0,'#4fb8f5');
+  sky.addColorStop(0.5,'#2f95e0');
+  sky.addColorStop(1,'#1f72c0');
+  ctx.fillStyle=sky; ctx.fillRect(0,0,w,h);
+  // Soft "sun" glow behind the title area
+  const glow=ctx.createRadialGradient(w/2,h*0.30,20,w/2,h*0.30,Math.max(w,h)*0.55);
+  glow.addColorStop(0,'rgba(255,255,255,0.28)');
+  glow.addColorStop(0.4,'rgba(255,255,255,0.10)');
+  glow.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=glow; ctx.fillRect(0,0,w,h);
+  // Wide soft diagonal light streaks
   ctx.save();
-  ctx.translate(w/2,h/2); ctx.rotate(-0.45);
-  ctx.fillStyle='rgba(255,255,255,0.07)';
-  const drift=(t*0.4)%140;
-  for (let x=-840+drift; x<840; x+=140) ctx.fillRect(x,-700,70,1400);
+  ctx.translate(w/2,h/2); ctx.rotate(-0.42);
+  ctx.fillStyle='rgba(255,255,255,0.05)';
+  const drift=(t*0.35)%240;
+  for (let x=-1100+drift; x<1100; x+=240) ctx.fillRect(x,-900,110,1800);
   ctx.restore();
-  ctx.fillStyle='#1d6fb8'; ctx.fillRect(0,h-70,w,70);
+  // Ground arc at the bottom for depth
+  const gh=Math.min(120,h*0.16);
+  const gg=ctx.createLinearGradient(0,h-gh,0,h);
+  gg.addColorStop(0,'rgba(18,86,150,0)');
+  gg.addColorStop(1,'rgba(14,64,116,0.9)');
+  ctx.fillStyle=gg;
+  ctx.beginPath();
+  ctx.moveTo(0,h);
+  ctx.lineTo(0,h-gh*0.55);
+  ctx.quadraticCurveTo(w/2,h-gh*1.25,w,h-gh*0.55);
+  ctx.lineTo(w,h); ctx.closePath(); ctx.fill();
+  // Edge vignette for focus
+  const vig=ctx.createRadialGradient(w/2,h/2,Math.min(w,h)*0.35,w/2,h/2,Math.max(w,h)*0.72);
+  vig.addColorStop(0,'rgba(0,0,0,0)');
+  vig.addColorStop(1,'rgba(8,28,56,0.42)');
+  ctx.fillStyle=vig; ctx.fillRect(0,0,w,h);
+}
+// Frosted glass panel: translucent dark fill, bright top edge, thin border.
+function drawGlassPanel(ctx, x, y, w, h, r=12, tint='rgba(10,28,58,0.55)') {
+  ctx.save();
+  ctx.fillStyle=tint;
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill();
+  // top highlight band
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.clip();
+  const hg=ctx.createLinearGradient(0,y,0,y+h*0.5);
+  hg.addColorStop(0,'rgba(255,255,255,0.18)');
+  hg.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=hg; ctx.fillRect(x,y,w,h*0.5);
+  ctx.restore();
+  ctx.strokeStyle='rgba(255,255,255,0.16)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.roundRect(x+0.75,y+0.75,w-1.5,h-1.5,r-0.5); ctx.stroke();
+  ctx.restore();
 }
 function drawCartoonTitle(ctx, text, x, y, size, t) {
   ctx.save();
   ctx.translate(x,y);
-  ctx.rotate(-0.04);
-  ctx.transform(1,0,-0.08,1,0,0);
-  const p=1+0.015*Math.sin(t*0.05);
+  ctx.rotate(-0.03);
+  ctx.transform(1,0,-0.06,1,0,0);
+  const p=1+0.014*Math.sin(t*0.05);
   ctx.scale(p,p);
   ctx.font=uiFont(size);
   ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  // soft outer halo
+  ctx.save();
+  ctx.shadowColor='rgba(255,210,70,0.55)'; ctx.shadowBlur=size*0.5;
+  ctx.fillStyle='rgba(255,225,120,0.30)';
+  ctx.fillText(text,0,0);
+  ctx.restore();
   // dark 3D extrusion under the face
-  ctx.strokeStyle='#0d1f40'; ctx.lineWidth=size*0.26;
-  ctx.strokeText(text,0,size*0.07);
-  ctx.strokeStyle='#16315e'; ctx.lineWidth=size*0.26;
+  ctx.strokeStyle='#0c1d3c'; ctx.lineWidth=size*0.27;
+  ctx.strokeText(text,0,size*0.08);
+  ctx.strokeStyle='#163563'; ctx.lineWidth=size*0.26;
   ctx.strokeText(text,0,0);
-  const g=ctx.createLinearGradient(0,-size*0.5,0,size*0.5);
-  g.addColorStop(0,'#ffffff'); g.addColorStop(0.55,'#fff3b0'); g.addColorStop(1,'#ffd34d');
+  const g=ctx.createLinearGradient(0,-size*0.55,0,size*0.55);
+  g.addColorStop(0,'#ffffff'); g.addColorStop(0.5,'#fff0a6'); g.addColorStop(1,'#ffcb38');
   ctx.fillStyle=g;
   ctx.fillText(text,0,0);
-  ctx.strokeStyle='rgba(122,74,0,0.55)'; ctx.lineWidth=Math.max(1.5,size*0.04);
+  ctx.strokeStyle='rgba(120,72,0,0.5)'; ctx.lineWidth=Math.max(1.5,size*0.035);
   ctx.strokeText(text,0,0);
   ctx.restore();
 }
@@ -4822,28 +4872,41 @@ function drawCartoonTitle(ctx, text, x, y, size, t) {
 // rect (used for hit-testing) never moves.
 function drawJuicyButton(ctx, rect, label, t) {
   const {x,y,w,h}=rect;
-  const bevel=Math.max(6,h*0.12);
+  const bevel=Math.max(7,h*0.13);
   const bob=Math.sin(t*0.06)*2;
+  const r=Math.min(20,h*0.28);
   ctx.save();
   ctx.translate(0,bob);
-  ctx.fillStyle='#c98700';
-  ctx.beginPath(); ctx.roundRect(x,y+bevel,w,h,14); ctx.fill();
+  // pulsing outer glow halo
+  ctx.save();
+  const pulse=0.5+0.5*Math.sin(t*0.08);
+  ctx.shadowColor='rgba(255,196,40,'+(0.5+0.35*pulse)+')';
+  ctx.shadowBlur=22+14*pulse;
+  ctx.fillStyle='rgba(255,196,40,0.9)';
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill();
+  ctx.restore();
+  // dark base (bevel depth)
+  ctx.fillStyle='#bf7e00';
+  ctx.beginPath(); ctx.roundRect(x,y+bevel,w,h,r); ctx.fill();
+  // face gradient
   const g=ctx.createLinearGradient(0,y,0,y+h);
-  g.addColorStop(0,'#ffd83d'); g.addColorStop(1,'#ffb300');
+  g.addColorStop(0,'#ffe25a'); g.addColorStop(0.5,'#ffc524'); g.addColorStop(1,'#ffab00');
   ctx.fillStyle=g;
-  ctx.beginPath(); ctx.roundRect(x,y,w,h,14); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.fill();
+  // outline
   ctx.strokeStyle='#5a3a00'; ctx.lineWidth=3;
-  ctx.beginPath(); ctx.roundRect(x,y,w,h+bevel,14); ctx.stroke();
-  ctx.fillStyle='rgba(255,255,255,0.38)';
-  ctx.beginPath(); ctx.roundRect(x+8,y+5,w-16,h*0.3,8); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x,y,w,h+bevel,r); ctx.stroke();
+  // top highlight band
+  ctx.fillStyle='rgba(255,255,255,0.42)';
+  ctx.beginPath(); ctx.roundRect(x+9,y+5,w-18,h*0.32,r*0.6); ctx.fill();
   // travelling sheen sweep every ~3s
   const sweep=((t*3)%(w*4))-w;
   if (sweep>-w*0.4&&sweep<w*1.2) {
     ctx.save();
-    ctx.beginPath(); ctx.roundRect(x,y,w,h,14); ctx.clip();
+    ctx.beginPath(); ctx.roundRect(x,y,w,h,r); ctx.clip();
     const sg=ctx.createLinearGradient(x+sweep-30,y,x+sweep+30,y+h);
     sg.addColorStop(0,'rgba(255,255,255,0)');
-    sg.addColorStop(0.5,'rgba(255,255,255,0.35)');
+    sg.addColorStop(0.5,'rgba(255,255,255,0.4)');
     sg.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=sg;
     ctx.fillRect(x+sweep-40,y,80,h);
@@ -4851,10 +4914,11 @@ function drawJuicyButton(ctx, rect, label, t) {
   }
   ctx.font=uiFont(Math.floor(h*0.38));
   ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.lineJoin='round';
+  const lbl='▶ '+label;
   ctx.strokeStyle='#5a3a00'; ctx.lineWidth=5;
-  ctx.strokeText(label,x+w/2,y+h/2+1);
+  ctx.strokeText(lbl,x+w/2,y+h/2+1);
   ctx.fillStyle='#fff';
-  ctx.fillText(label,x+w/2,y+h/2+1);
+  ctx.fillText(lbl,x+w/2,y+h/2+1);
   ctx.restore();
   return rect;
 }
@@ -4868,16 +4932,22 @@ function drawPill(ctx, x, y, w, h) {
 function drawStatBar(ctx, x, y, w, label, ratio, color) {
   ratio=Math.max(0.06,Math.min(ratio,1));
   ctx.save();
-  ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font=uiFont(9);
+  ctx.fillStyle='rgba(255,255,255,0.9)'; ctx.font=uiFont(9);
   ctx.textAlign='left'; ctx.textBaseline='middle';
-  ctx.fillText(label,x,y+4);
-  const bx=x+34, bw=w-34, bh=8;
-  ctx.fillStyle='rgba(0,0,0,0.45)';
-  ctx.beginPath(); ctx.roundRect(bx,y,bw,bh,4); ctx.fill();
-  ctx.fillStyle=color;
-  ctx.beginPath(); ctx.roundRect(bx,y,bw*ratio,bh,4); ctx.fill();
-  ctx.fillStyle='rgba(255,255,255,0.35)';
-  ctx.beginPath(); ctx.roundRect(bx+1,y+1,Math.max(bw*ratio-2,2),2.5,2); ctx.fill();
+  ctx.fillText(label,x,y+5);
+  const bx=x+38, bw=w-38, bh=9, r=bh/2;
+  // track
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.roundRect(bx,y,bw,bh,r); ctx.fill();
+  // fill with vertical gradient
+  const fw=Math.max(bw*ratio,bh);
+  const fg=ctx.createLinearGradient(0,y,0,y+bh);
+  fg.addColorStop(0,lighten(color,0.35)); fg.addColorStop(1,color);
+  ctx.fillStyle=fg;
+  ctx.beginPath(); ctx.roundRect(bx,y,fw,bh,r); ctx.fill();
+  // glossy top highlight
+  ctx.fillStyle='rgba(255,255,255,0.4)';
+  ctx.beginPath(); ctx.roundRect(bx+1.5,y+1.5,Math.max(fw-3,2),2.5,1.25); ctx.fill();
   ctx.restore();
 }
 
@@ -8526,19 +8596,24 @@ class Game {
       const titleY=lerp(-90,90,easeOutBack(et/28));
       drawCartoonTitle(ctx,'BRAWL ARENA',w/2,titleY,58,this.frameCount);
 
-      // Subtitle plate
-      ctx.fillStyle='rgba(0,30,70,0.5)';
-      ctx.beginPath(); ctx.roundRect(w/2-190,150,380,32,16); ctx.fill();
-      ctx.fillStyle='#cfe6ff'; ctx.font=uiFont(16);
+      // Subtitle glass chip
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('Выбери бравлера и вступай в битву!',w/2,166);
+      drawGlassPanel(ctx,w/2-200,150,400,34,17);
+      ctx.fillStyle='#e6f3ff'; ctx.font=uiFont(16);
+      ctx.fillText('Выбери бравлера и вступай в битву!',w/2,168);
 
-      // Career plate: total trophies & wins
+      // Career chips: trophies & wins as two separate glass pills
       const prog=Progress.load();
-      ctx.fillStyle='rgba(0,30,70,0.5)';
-      ctx.beginPath(); ctx.roundRect(w/2-105,192,210,30,15); ctx.fill();
-      ctx.fillStyle='#ffd34d'; ctx.font=uiFont(15);
-      ctx.fillText(`🏆 ${Progress.total()}    🥇 ${prog.wins||0}`,w/2,207);
+      ctx.font=uiFont(15);
+      const tTxt=`🏆 ${Progress.total()}`, wTxt=`🥇 ${prog.wins||0}`;
+      const cpw=Math.max(96,ctx.measureText(tTxt).width+34);
+      const cww=Math.max(96,ctx.measureText(wTxt).width+34);
+      const cpGap=12, cpTot=cpw+cww+cpGap, cpx=w/2-cpTot/2, cpy=194, cph=30;
+      drawGlassPanel(ctx,cpx,cpy,cpw,cph,15);
+      drawGlassPanel(ctx,cpx+cpw+cpGap,cpy,cww,cph,15);
+      ctx.fillStyle='#ffd34d';
+      ctx.fillText(tTxt,cpx+cpw/2,cpy+cph/2+1);
+      ctx.fillText(wTxt,cpx+cpw+cpGap+cww/2,cpy+cph/2+1);
 
       // Button slides up on entry (visual only — hit rect is static)
       ctx.save();
@@ -8550,19 +8625,25 @@ class Game {
       const keys=['shelly','colt','bull','nita','edgar','spike','crow','mortis'];
       keys.forEach((key,i)=>{
         const px=w/2+(i-3.5)*88;
+        const bobY=Math.sin(this.frameCount*0.05+i*0.9)*3;
         const wob=Math.sin(this.frameCount*0.02+i*1.7)*0.25;
-        drawBrawlerArt(ctx,key,px,h-105,1.5,-0.3+wob,{
+        // soft ground shadow
+        ctx.save();
+        ctx.fillStyle='rgba(0,0,0,0.18)';
+        ctx.beginPath(); ctx.ellipse(px,h-72,30,9,0,0,TAU); ctx.fill();
+        ctx.restore();
+        drawBrawlerArt(ctx,key,px,h-105+bobY,1.5,-0.3+wob,{
           t:this.frameCount+i*37, walk:this.frameCount*0.12+i*2,
           moving:0.5, recoil:0, spawn:0, flash:false
         });
       });
 
-      ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font=uiFont(12);
-      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font=uiFont(12);
+      ctx.textAlign='center'; ctx.textBaseline='middle';
       const hint=IS_TOUCH
         ? 'Левый джойстик = движение  |  Правый = стрельба  |  Жёлтый = супер  |  💡 = гаджет'
         : 'WASD = движение  |  Мышь = прицел и стрельба  |  Пробел = супер  |  E = гаджет';
-      ctx.fillText(hint,w/2,h-40);
+      ctx.fillText(hint,w/2,h-34);
 
     } else if (this.menuState==='select') {
       drawCartoonTitle(ctx,'ВЫБЕРИ БРАВЛЕРА',w/2,lerp(-60,68,easeOutBack(et/24)),34,this.frameCount);
@@ -8573,9 +8654,11 @@ class Game {
       const startX=w/2-(cols*cw+(cols-1)*cgap)/2;
       const totalCardsW=cols*cw+(cols-1)*cgap;
 
-      // ── Difficulty tabs ──────────────────────────────────────
-      const nTabs=DIFFICULTIES.length, tabH=32, tabGap=6, tabsY=94;
+      // ── Difficulty tabs — segmented pill control ─────────────
+      const nTabs=DIFFICULTIES.length, tabH=34, tabGap=7, tabsY=92;
       const tabW=(totalCardsW-(nTabs-1)*tabGap)/nTabs;
+      // track behind the whole segment
+      drawGlassPanel(ctx,startX-7,tabsY-5,totalCardsW+14,tabH+10,(tabH+10)/2,'rgba(8,24,52,0.5)');
       this.diffTabRects=[];
       for (let i=0;i<nTabs;i++) {
         const diff=DIFFICULTIES[i];
@@ -8584,22 +8667,29 @@ class Game {
         const col=DIFF_COLORS[i];
         const galactic=diff==='galactic';
         ctx.save();
-        if (galactic) { // космическое мерцание для секретного уровня
+        if (active) {
           const pulse=0.5+0.5*Math.sin(this.frameCount*0.12);
-          ctx.shadowColor=col; ctx.shadowBlur=active?(8+10*pulse):4;
+          ctx.shadowColor=col; ctx.shadowBlur=galactic?(10+12*pulse):12;
+          const tg=ctx.createLinearGradient(0,tabsY,0,tabsY+tabH);
+          tg.addColorStop(0,lighten(col,0.28)); tg.addColorStop(1,col);
+          ctx.fillStyle=tg;
+          ctx.beginPath(); ctx.roundRect(tx,tabsY,tabW,tabH,9); ctx.fill();
+          ctx.shadowBlur=0;
+          ctx.fillStyle='rgba(255,255,255,0.3)';
+          ctx.beginPath(); ctx.roundRect(tx+3,tabsY+3,tabW-6,tabH*0.34,6); ctx.fill();
+        } else {
+          if (galactic) { const pulse=0.5+0.5*Math.sin(this.frameCount*0.12); ctx.shadowColor=col; ctx.shadowBlur=3+5*pulse; }
+          ctx.fillStyle='rgba(255,255,255,0.06)';
+          ctx.beginPath(); ctx.roundRect(tx,tabsY,tabW,tabH,9); ctx.fill();
+          ctx.shadowBlur=0;
         }
-        ctx.fillStyle=active?col:'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.roundRect(tx,tabsY,tabW,tabH,8); ctx.fill();
-        ctx.shadowBlur=0;
-        if (active){ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=0.6;ctx.beginPath();ctx.roundRect(tx-2,tabsY-2,tabW+4,tabH+4,10);ctx.stroke();}
-        ctx.globalAlpha=1;
-        ctx.fillStyle=active?'#fff':'rgba(255,255,255,0.45)';
-        // Fit label inside the tab
+        ctx.fillStyle=active?'#fff':'rgba(220,235,255,0.5)';
         const label=DIFF_LABELS[i];
         let fs=active?11:10;
         ctx.font=uiFont(fs);
         while (ctx.measureText(label).width>tabW-8 && fs>6) { fs--; ctx.font=uiFont(fs); }
         ctx.textAlign='center'; ctx.textBaseline='middle';
+        if (active){ ctx.lineJoin='round'; ctx.strokeStyle='rgba(0,0,0,0.35)'; ctx.lineWidth=3; ctx.strokeText(label,tx+tabW/2,tabsY+tabH/2); ctx.fillStyle='#fff'; }
         ctx.fillText(label,tx+tabW/2,tabsY+tabH/2);
         ctx.restore();
         this.diffTabRects.push({x:tx,y:tabsY,w:tabW,h:tabH,diff});
@@ -8626,6 +8716,10 @@ class Game {
         shelly:'🔥 Широкий залп',colt:'⚡ Очередь',bull:'💨 Рывок',nita:'🐻 Медведь',
         edgar:'🌀 Прыжок',spike:'🌵 Шипы',crow:'☠ Прыжок',mortis:'🦇 Мыши'
       };
+      const roleLabels={
+        shelly:'БОЕЦ',colt:'СТРЕЛОК',bull:'ТАНК',nita:'ПРИЗЫВ',
+        edgar:'УБИЙЦА',spike:'КОНТРОЛЬ',crow:'ЯД',mortis:'УБИЙЦА'
+      };
 
       for(let i=0;i<keys.length;i++) {
         const key=keys[i], cfg=BRAWLER_CONFIGS[key];
@@ -8639,74 +8733,98 @@ class Game {
         ctx.save();
         ctx.globalAlpha=easeOutCubic((et-i*5)/14);
         ctx.translate(0,yOff);
+        const R=15, headH=96;
 
-        // Card body: brawler-coloured gradient
-        const cg=ctx.createLinearGradient(0,cy2,0,cy2+ch);
-        cg.addColorStop(0,cfg.color); cg.addColorStop(1,darken(cfg.color,0.42));
-        ctx.fillStyle=cg;
-        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.fill();
-        ctx.strokeStyle='rgba(0,0,0,0.45)'; ctx.lineWidth=3; ctx.stroke();
-        // Diagonal sheen
+        // Drop shadow under the card
         ctx.save();
-        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.clip();
-        ctx.fillStyle='rgba(255,255,255,0.08)';
-        ctx.beginPath();
-        ctx.moveTo(cx2+cw*0.45,cy2); ctx.lineTo(cx2+cw*0.8,cy2);
-        ctx.lineTo(cx2+cw*0.35,cy2+ch); ctx.lineTo(cx2,cy2+ch);
-        ctx.closePath(); ctx.fill();
+        ctx.shadowColor='rgba(0,0,0,0.4)'; ctx.shadowBlur=hov?22:12; ctx.shadowOffsetY=hov?10:6;
+        ctx.fillStyle='rgba(12,20,42,0.96)';
+        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,R); ctx.fill();
         ctx.restore();
 
-        if (hov) {
-          ctx.save();
-          ctx.strokeStyle='#ffdd00'; ctx.lineWidth=4;
-          ctx.shadowColor='#ffdd00'; ctx.shadowBlur=18;
-          ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.stroke();
-          ctx.restore();
-        }
+        // Coloured header band (top) holding the portrait
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,R); ctx.clip();
+        const hg=ctx.createLinearGradient(0,cy2,0,cy2+headH);
+        hg.addColorStop(0,lighten(cfg.color,0.18)); hg.addColorStop(1,darken(cfg.color,0.78));
+        ctx.fillStyle=hg; ctx.fillRect(cx2,cy2,cw,headH);
+        // radial spotlight glow behind the portrait
+        const sp=ctx.createRadialGradient(cx2+cw/2,cy2+58,6,cx2+cw/2,cy2+58,cw*0.6);
+        sp.addColorStop(0,'rgba(255,255,255,0.4)');
+        sp.addColorStop(0.5,'rgba(255,255,255,0.08)');
+        sp.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=sp; ctx.fillRect(cx2,cy2,cw,headH+30);
+        ctx.restore();
 
-        // Portrait
-        ctx.fillStyle='rgba(255,255,255,0.12)';
-        ctx.beginPath(); ctx.ellipse(cx2+cw/2,cy2+108,cw*0.32,18,0,0,TAU); ctx.fill();
-        drawBrawlerArt(ctx,key,cx2+cw/2,cy2+80,2.0,-0.45,{
+        // Body panel below the header
+        const bodyY=cy2+headH;
+        ctx.fillStyle='rgba(16,24,48,0.92)';
+        ctx.beginPath(); ctx.roundRect(cx2,bodyY,cw,ch-headH,0); ctx.fill();
+        // re-clip rounded bottom corners
+        ctx.save();
+        ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,R); ctx.clip();
+        ctx.fillStyle='rgba(16,24,48,0.92)'; ctx.fillRect(cx2,bodyY,cw,ch-headH);
+        ctx.restore();
+
+        // Outline + hover glow
+        ctx.save();
+        if (hov) { ctx.strokeStyle='#ffdd33'; ctx.lineWidth=3.5; ctx.shadowColor='#ffdd33'; ctx.shadowBlur=20; }
+        else { ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=2; }
+        ctx.beginPath(); ctx.roundRect(cx2+1,cy2+1,cw-2,ch-2,R-1); ctx.stroke();
+        ctx.restore();
+
+        // Portrait + ground shadow
+        ctx.fillStyle='rgba(0,0,0,0.22)';
+        ctx.beginPath(); ctx.ellipse(cx2+cw/2,cy2+92,cw*0.3,12,0,0,TAU); ctx.fill();
+        drawBrawlerArt(ctx,key,cx2+cw/2,cy2+74,2.0,-0.45,{
           t:this.frameCount+i*53, walk:0, moving:0, recoil:0, spawn:0, flash:false
         });
 
         // Trophy badge
         const tro=Progress.load().trophies[key]||0;
-        ctx.fillStyle='rgba(0,0,0,0.4)';
-        ctx.beginPath(); ctx.roundRect(cx2+8,cy2+8,58,20,10); ctx.fill();
+        ctx.fillStyle='rgba(0,0,0,0.45)';
+        ctx.beginPath(); ctx.roundRect(cx2+8,cy2+8,56,20,10); ctx.fill();
         ctx.fillStyle='#ffd34d'; ctx.font=uiFont(12);
         ctx.textAlign='left'; ctx.textBaseline='middle';
         ctx.fillText(`🏆 ${tro}`,cx2+14,cy2+18);
 
-        // Name plate
-        ctx.fillStyle='rgba(20,25,50,0.85)';
-        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+150,cw-20,26,8); ctx.fill();
-        ctx.font=uiFont(16); ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.lineJoin='round'; ctx.strokeStyle='rgba(0,0,0,0.6)'; ctx.lineWidth=3;
-        ctx.strokeText(cfg.name,cx2+cw/2,cy2+163);
+        // Name
+        ctx.font=uiFont(17); ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.lineJoin='round'; ctx.strokeStyle='rgba(0,0,0,0.7)'; ctx.lineWidth=4;
+        ctx.strokeText(cfg.name,cx2+cw/2,bodyY+18);
         ctx.fillStyle='#fff';
-        ctx.fillText(cfg.name,cx2+cw/2,cy2+163);
+        ctx.fillText(cfg.name,cx2+cw/2,bodyY+18);
+
+        // Role chip (centred under name)
+        ctx.font=uiFont(9.5);
+        const role=roleLabels[key]||'', rcw=ctx.measureText(role).width+22, rcx=cx2+cw/2-rcw/2, rcy=bodyY+30;
+        ctx.fillStyle=darken(cfg.color,0.85);
+        ctx.beginPath(); ctx.roundRect(rcx,rcy,rcw,17,8.5); ctx.fill();
+        ctx.strokeStyle=cfg.color; ctx.lineWidth=1.5;
+        ctx.beginPath(); ctx.roundRect(rcx,rcy,rcw,17,8.5); ctx.stroke();
+        ctx.fillStyle=lighten(cfg.color,0.55); ctx.textBaseline='middle';
+        ctx.fillText(role,cx2+cw/2,rcy+9);
 
         // Stat bars
-        drawStatBar(ctx,cx2+12,cy2+192,cw-24,'HP',  cfg.hp/5000,'#4cd137');
-        drawStatBar(ctx,cx2+12,cy2+214,cw-24,'УРОН',cfg.damage*cfg.bulletCount/1750,'#e84118');
-        drawStatBar(ctx,cx2+12,cy2+236,cw-24,'СКОР',(cfg.speed-2.0)/0.9,'#00a8ff');
+        drawStatBar(ctx,cx2+14,cy2+178,cw-28,'HP',  cfg.hp/5000,'#4cd137');
+        drawStatBar(ctx,cx2+14,cy2+200,cw-28,'УРОН',cfg.damage*cfg.bulletCount/1750,'#e84118');
+        drawStatBar(ctx,cx2+14,cy2+222,cw-28,'СКОР',(cfg.speed-2.0)/0.9,'#00a8ff');
 
-        // Super label
-        ctx.fillStyle='rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.roundRect(cx2+10,cy2+ch-38,cw-20,24,8); ctx.fill();
-        ctx.fillStyle='#ffdd00'; ctx.font=uiFont(10);
+        // Super chip
+        drawGlassPanel(ctx,cx2+10,cy2+ch-40,cw-20,26,9,'rgba(0,0,0,0.4)');
+        ctx.fillStyle='#ffdd33'; ctx.font=uiFont(10.5);
         ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-26);
+        ctx.fillText(superLabels[key],cx2+cw/2,cy2+ch-27);
 
         // Lock overlay for locked difficulties
         if (!Progress.hasBeatDiff(key,this.selectedDiff)) {
-          ctx.fillStyle='rgba(0,0,0,0.62)';
-          ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,12); ctx.fill();
+          ctx.save();
+          ctx.beginPath(); ctx.roundRect(cx2,cy2,cw,ch,R); ctx.clip();
+          ctx.fillStyle='rgba(6,12,28,0.74)'; ctx.fillRect(cx2,cy2,cw,ch);
+          ctx.restore();
           ctx.font=uiFont(36); ctx.textAlign='center'; ctx.textBaseline='middle';
           ctx.fillText('🔒',cx2+cw/2,cy2+ch/2-14);
-          ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font=uiFont(10);
+          ctx.fillStyle='rgba(255,255,255,0.8)'; ctx.font=uiFont(10);
           const reqText={hellish:'Победи СЛОЖНЫХ',divine:'Победи АДСКИХ',galactic:'Победи БОЖЕСТВЕННЫХ'};
           const req=reqText[this.selectedDiff]||'';
           ctx.fillText(req,cx2+cw/2,cy2+ch/2+22);
@@ -9552,6 +9670,13 @@ class Game {
 function darken(hex, f) {
   const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
   return `rgb(${Math.floor(r*f)},${Math.floor(g*f)},${Math.floor(b*f)})`;
+}
+// Mix a hex colour toward white by factor f (0..1).
+function lighten(hex, f) {
+  if (hex[0]!=='#') return hex;
+  const r=parseInt(hex.slice(1,3),16), g=parseInt(hex.slice(3,5),16), b=parseInt(hex.slice(5,7),16);
+  const m=v=>Math.round(v+(255-v)*f);
+  return `rgb(${m(r)},${m(g)},${m(b)})`;
 }
 
 // Boot immediately if the document is already loaded (htmlpreview and
