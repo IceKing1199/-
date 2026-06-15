@@ -3976,6 +3976,7 @@
 </script>
 <script src="shelly-glb.js"></script>
 <script src="spike-glb.js"></script>
+<script src="bull-glb.js"></script>
 <script>
 /* Предзагрузка GLB-модели Шелли из встроенного base64 (без сети) */
 (function(){
@@ -3998,6 +3999,17 @@
     new THREE.GLTFLoader().parse(bytes.buffer, "", function(gltf){ window.__spikeTemplate=gltf.scene; },
       function(err){ console.warn("Spike GLB parse failed:", err); });
   } catch(e){ console.warn("Spike GLB preload error:", e); }
+})();
+/* Предзагрузка GLB-модели Булла */
+(function(){
+  try {
+    if (!window.BULL_GLB_B64 || !window.THREE || !THREE.GLTFLoader) return;
+    var bin=atob(window.BULL_GLB_B64), n=bin.length, bytes=new Uint8Array(n);
+    for (var i=0;i<n;i++) bytes[i]=bin.charCodeAt(i);
+    window.BULL_GLB_B64=null;
+    new THREE.GLTFLoader().parse(bytes.buffer, "", function(gltf){ window.__bullTemplate=gltf.scene; },
+      function(err){ console.warn("Bull GLB parse failed:", err); });
+  } catch(e){ console.warn("Bull GLB preload error:", e); }
 })();
 </script>
 <script>
@@ -7284,7 +7296,7 @@ class CharacterRenderer3D {
     // бравлера и поднимаем «на ноги», чтобы ступни были в y=0.
     const S=R*2.1;
     inst.scale.setScalar(S);
-    const GLB_ROT={shelly:-Math.PI/6, spike:0};
+    const GLB_ROT={shelly:-Math.PI/6, spike:0, bull:0};
     inst.rotation.y=GLB_ROT[type]??0;
     const wrap=new THREE.Group(); wrap.position.y=S*0.5; wrap.add(inst); rig.add(wrap);
     // Клонируем материалы (независимый флэш/прозрачность у каждого инстанса).
@@ -7308,6 +7320,8 @@ class CharacterRenderer3D {
       return this.buildGLBBrawler(window.__shellyTemplate, BRAWLER_CONFIGS[type].radius, type);
     if (type==='spike' && window.__spikeTemplate)
       return this.buildGLBBrawler(window.__spikeTemplate, BRAWLER_CONFIGS[type].radius, type);
+    if (type==='bull' && window.__bullTemplate)
+      return this.buildGLBBrawler(window.__bullTemplate, BRAWLER_CONFIGS[type].radius, type);
     const cfg=BRAWLER_CONFIGS[type], pal=BRAWLER_ART[type], R=cfg.radius;
     const mats=[];
     const mat=c=>{
