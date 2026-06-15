@@ -7305,7 +7305,16 @@ class CharacterRenderer3D {
       if (!o.isMesh) return;
       o.castShadow=true;
       const src=o.material;
-      const cloneOne=m=>{ const c=m.clone(); c.transparent=true; mats.push(c); return c; };
+      const cloneOne=m=>{
+        const c=m.clone(); c.transparent=true;
+        // PBR-материалы GLTF по умолчанию металлические; без environment-карты
+        // они рендерятся чёрными. Делаем их матовыми диффузными — освещаются
+        // обычным светом сцены (ambient + directional), как процедурные модели.
+        if (c.metalness!==undefined) c.metalness=0;
+        if (c.roughness!==undefined) c.roughness=Math.max(c.roughness,0.6);
+        if (c.envMapIntensity!==undefined) c.envMapIntensity=0;
+        mats.push(c); return c;
+      };
       o.material=Array.isArray(src)?src.map(cloneOne):cloneOne(src);
     });
     // Заглушки под общий код анимации (ног/оружия у GLB нет).
