@@ -5414,6 +5414,22 @@ class Brawler {
           if (diff<=this.config.meleeArc && d<hd) { hd=d; hit=b; }
         }
         if (hit) this.meleeHit(hit, dmg);
+        // Эдгар бьёт T_CRATE в том же конусе meleeArc
+        if (game) {
+          const er=this.config.range+TILE/2;
+          const etx0=Math.floor((this.x-er)/TILE), etx1=Math.floor((this.x+er)/TILE);
+          const ety0=Math.floor((this.y-er)/TILE), ety1=Math.floor((this.y+er)/TILE);
+          for (let ety=ety0;ety<=ety1;ety++) for (let etx=etx0;etx<=etx1;etx++) {
+            if (tileMap.tileAt(etx,ety)!==T_CRATE) continue;
+            const ecx=etx*TILE+TILE/2, ecy=ety*TILE+TILE/2;
+            if (dist(this.x,this.y,ecx,ecy)>er) continue;
+            const ea=Math.atan2(ecy-this.y,ecx-this.x);
+            const edf=Math.abs(((ea-this.angle)+Math.PI*3)%(Math.PI*2)-Math.PI);
+            if (edf>this.config.meleeArc) continue;
+            const ebroken=tileMap.damageBox(etx,ety,dmg);
+            if (ebroken&&game) game.onBoxDestroyed(etx,ety,ebroken);
+          }
+        }
       } else if (this.type==='mortis') {
         // Рывок вперёд с урон-контактом по ходу движения (обрабатывается в updateLunge)
         this.meleeDamage=dmg;
@@ -5457,7 +5473,14 @@ class Brawler {
     this.lungeTimer--;
     const nx=this.x+Math.cos(this.lungeAngle)*this.lungeStep;
     const ny=this.y+Math.sin(this.lungeAngle)*this.lungeStep;
-    if (tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove)) { this.lungeTimer=0; this.meleeHitIds=null; return; }
+    const lhit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove);
+    if (lhit) {
+      if (lhit.type===T_CRATE) {
+        const lbroken=tileMap.damageBox(lhit.tx,lhit.ty,this.meleeDamage||this.config.damage);
+        if (lbroken&&game) game.onBoxDestroyed(lhit.tx,lhit.ty,lbroken);
+        // крейт не останавливает лунж
+      } else { this.lungeTimer=0; this.meleeHitIds=null; return; }
+    }
     if (nx<this.radius||nx>ARENA_WIDTH-this.radius||
         ny<this.radius||ny>ARENA_HEIGHT-this.radius) { this.lungeTimer=0; this.meleeHitIds=null; return; }
     this.x=nx; this.y=ny;
@@ -7179,7 +7202,7 @@ class CharacterRenderer3D {
     // бравлера и поднимаем «на ноги», чтобы ступни были в y=0.
     const S=R*2.1;
     inst.scale.setScalar(S);
-    inst.rotation.y=(this.GLB_YAW!=null?this.GLB_YAW:-2.071); // фронт/ствол модели → +X (направление прицела)
+    inst.rotation.y=Math.PI; // локальная ось -X модели → мировой +X (направление прицела)
     const wrap=new THREE.Group(); wrap.position.y=S*0.5; wrap.add(inst); rig.add(wrap);
     // Клонируем материалы (независимый флэш/прозрачность у каждого инстанса).
     const mats=[];
