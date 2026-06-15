@@ -3975,6 +3975,7 @@
 } )();
 </script>
 <script src="shelly-glb.js"></script>
+<script src="spike-glb.js"></script>
 <script>
 /* Предзагрузка GLB-модели Шелли из встроенного base64 (без сети) */
 (function(){
@@ -3982,10 +3983,21 @@
     if (!window.SHELLY_GLB_B64 || !window.THREE || !THREE.GLTFLoader) return;
     var bin=atob(window.SHELLY_GLB_B64), n=bin.length, bytes=new Uint8Array(n);
     for (var i=0;i<n;i++) bytes[i]=bin.charCodeAt(i);
-    window.SHELLY_GLB_B64=null; // освободить строку после декодирования
+    window.SHELLY_GLB_B64=null;
     new THREE.GLTFLoader().parse(bytes.buffer, "", function(gltf){ window.__shellyTemplate=gltf.scene; },
       function(err){ console.warn("Shelly GLB parse failed:", err); });
   } catch(e){ console.warn("Shelly GLB preload error:", e); }
+})();
+/* Предзагрузка GLB-модели Спайка */
+(function(){
+  try {
+    if (!window.SPIKE_GLB_B64 || !window.THREE || !THREE.GLTFLoader) return;
+    var bin=atob(window.SPIKE_GLB_B64), n=bin.length, bytes=new Uint8Array(n);
+    for (var i=0;i<n;i++) bytes[i]=bin.charCodeAt(i);
+    window.SPIKE_GLB_B64=null;
+    new THREE.GLTFLoader().parse(bytes.buffer, "", function(gltf){ window.__spikeTemplate=gltf.scene; },
+      function(err){ console.warn("Spike GLB parse failed:", err); });
+  } catch(e){ console.warn("Spike GLB preload error:", e); }
 })();
 </script>
 <script>
@@ -7272,7 +7284,8 @@ class CharacterRenderer3D {
     // бравлера и поднимаем «на ноги», чтобы ступни были в y=0.
     const S=R*2.1;
     inst.scale.setScalar(S);
-    inst.rotation.y=-Math.PI/6; // повернуть на -30° от базового
+    const GLB_ROT={shelly:-Math.PI/6, spike:0};
+    inst.rotation.y=GLB_ROT[type]??0;
     const wrap=new THREE.Group(); wrap.position.y=S*0.5; wrap.add(inst); rig.add(wrap);
     // Клонируем материалы (независимый флэш/прозрачность у каждого инстанса).
     const mats=[];
@@ -7293,6 +7306,8 @@ class CharacterRenderer3D {
     // Загруженная 3D-модель (GLB) заменяет процедурную, когда готов шаблон.
     if (type==='shelly' && window.__shellyTemplate)
       return this.buildGLBBrawler(window.__shellyTemplate, BRAWLER_CONFIGS[type].radius, type);
+    if (type==='spike' && window.__spikeTemplate)
+      return this.buildGLBBrawler(window.__spikeTemplate, BRAWLER_CONFIGS[type].radius, type);
     const cfg=BRAWLER_CONFIGS[type], pal=BRAWLER_ART[type], R=cfg.radius;
     const mats=[];
     const mat=c=>{
