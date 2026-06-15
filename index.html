@@ -7311,7 +7311,7 @@ class CharacterRenderer3D {
     // Заглушки под общий код анимации (ног/оружия у GLB нет).
     const legL=new THREE.Object3D(), legR=new THREE.Object3D();
     rig.add(legL); rig.add(legR);
-    return { group, rig, legL, legR, gun:null, gunX:0, body:null, head:null, mats, R, flash:false };
+    return { group, rig, legL, legR, gun:null, gunX:0, body:null, head:null, mats, R, flash:false, isGLB:true };
   }
 
   buildBrawler(type) {
@@ -7503,6 +7503,10 @@ class CharacterRenderer3D {
 
   ensure(key, builder) {
     let md=this.models.get(key);
+    if (md && !md.isGLB && key.type) {
+      const tmpl=window['__'+key.type+'Template'];
+      if (tmpl) { this.scene.remove(md.group); this.models.delete(key); md=null; }
+    }
     if (!md) { md=builder(); this.scene.add(md.group); this.models.set(key,md); }
     return md;
   }
