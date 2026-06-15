@@ -7202,7 +7202,7 @@ class CharacterRenderer3D {
     // бравлера и поднимаем «на ноги», чтобы ступни были в y=0.
     const S=R*2.1;
     inst.scale.setScalar(S);
-    inst.rotation.y=Math.PI; // локальная ось -X модели → мировой +X (направление прицела)
+    inst.rotation.y=0; // лицо модели → мировой +X (направление прицела)
     const wrap=new THREE.Group(); wrap.position.y=S*0.5; wrap.add(inst); rig.add(wrap);
     // Клонируем материалы (независимый флэш/прозрачность у каждого инстанса).
     const mats=[];
