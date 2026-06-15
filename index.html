@@ -7179,7 +7179,7 @@ class CharacterRenderer3D {
     // бравлера и поднимаем «на ноги», чтобы ступни были в y=0.
     const S=R*2.1;
     inst.scale.setScalar(S);
-    inst.rotation.y=(this.GLB_YAW!=null?this.GLB_YAW:-Math.PI/2); // фронт модели → +X
+    inst.rotation.y=(this.GLB_YAW!=null?this.GLB_YAW:-2.071); // фронт/ствол модели → +X (направление прицела)
     const wrap=new THREE.Group(); wrap.position.y=S*0.5; wrap.add(inst); rig.add(wrap);
     // Клонируем материалы (независимый флэш/прозрачность у каждого инстанса).
     const mats=[];
@@ -8988,6 +8988,19 @@ class Game {
         ctx.beginPath(); ctx.arc(bottom.x, bottom.y+10, 4, 0, TAU); ctx.stroke();
         ctx.restore();
       }
+    }
+
+    // HP ящиков с усилениями (power-crates) — всегда видно, как сейф в Brawl Stars
+    for (const [idx,e] of r3.mapR.boxes) {
+      if (tileMap.grid[idx]!==T_CRATE) continue;
+      const r=Math.max(0,tileMap.boxHpRatio(e.tx,e.ty));
+      const top=proj(e.tx*TILE+TILE/2, e.ty*TILE+TILE/2, 50);
+      const bw=30, bh=5, bx=top.x-bw/2, by=top.y;
+      ctx.save();
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fillRect(bx-1,by-1,bw+2,bh+2);
+      ctx.fillStyle=r>0.5?'#5fd14c':r>0.25?'#ffaa00':'#ff5050';
+      ctx.fillRect(bx,by,bw*r,bh);
+      ctx.restore();
     }
 
     // HP медведей
