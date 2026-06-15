@@ -264,7 +264,8 @@ const MAP_LAYOUTS = (() => {
 
   // Compact 44x44 desert arena (hand-authored, 4-fold symmetric quadrant 21x21).
   // Centerpiece: a wall-ringed power-crate VAULT with four 2-tile entrances (N/S/E/W).
-  // 8 water pools, bush stealth patches, scattered cacti, spawns at corners + edges.
+  // Plus 4 scattered power-crates off-center, 8 water pools, bush stealth patches,
+  // scattered cacti, and spawns at corners + edges.
   const desert = sym([BDR,
     m('.....................'),
     m('.S........S..........'),
@@ -275,7 +276,7 @@ const MAP_LAYOUTS = (() => {
     m('......bbb.......k....'),
     m('......bbb............'),
     m('......bbb............'),
-    m('..k........k.........'),
+    m('..k........k....C....'),
     m('.S........B......k...'),
     m('.........k...........'),
     m('.....................'),
@@ -377,6 +378,8 @@ function buildTileMap() {
     },
     tileAtWorld(x, y) { return this.tileAt(Math.floor(x/TILE), Math.floor(y/TILE)); },
     isSolidForMove(t)   { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_WATER||t===T_STEEL||t===T_CACTUS; },
+    // Like isSolidForMove but water is passable — used only by Bull's super-dash.
+    isSolidForMoveNoWater(t) { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_STEEL||t===T_CACTUS; },
     isSolidForBullet(t) { return t===T_WALL||t===T_BOX||t===T_CRATE||t===T_STEEL||t===T_CACTUS; },
     // Only checks the 2x2-3x3 tiles overlapping the circle.
     circleHitsSolid(x, y, r, solidFn) {
@@ -1462,12 +1465,13 @@ class Brawler {
     if (cy && ny>this.radius && ny<ARENA_HEIGHT-this.radius) this.y=ny;
   }
   // Bull dash: single combined-vector check (no diagonal wall clipping),
-  // smashes through boxes/crates, stops at rocks/water/border.
+  // smashes through boxes/crates, runs through water, stops at rocks/border.
   updateDash() {
     this.dashTimer--;
     const nx=this.x+Math.cos(this.dashAngle)*this.config.chargeSpeed;
     const ny=this.y+Math.sin(this.dashAngle)*this.config.chargeSpeed;
-    const hit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMove);
+    // Super-dash ignores water (Bull charges straight through lakes).
+    const hit=tileMap.circleHitsSolid(nx,ny,this.radius,tileMap.isSolidForMoveNoWater);
     if (hit && (hit.type===T_BOX||hit.type===T_CRATE||hit.type===T_WALL||hit.type===T_CACTUS)) {
       // Bull smashes regular boxes/crates/walls/cacti but stops at T_STEEL
       const broken=tileMap.damageBox(hit.tx,hit.ty,99999);
@@ -2906,11 +2910,26 @@ class MapRenderer3D {
 
   lambert(color) { return new THREE.MeshLambertMaterial({color:new THREE.Color(color)}); }
 
+  // Flat rounded-rect THREE.Shape; each corner rounds only when its radius>0.
+  roundedRectShape(hw, hh, r) {
+    const [tl,tr,br,bl]=r, s=new THREE.Shape();
+    s.moveTo(-hw+tl, hh);
+    s.lineTo(hw-tr, hh);  if(tr) s.quadraticCurveTo(hw,hh,hw,hh-tr);
+    s.lineTo(hw, -hh+br); if(br) s.quadraticCurveTo(hw,-hh,hw-br,-hh);
+    s.lineTo(-hw+bl,-hh); if(bl) s.quadraticCurveTo(-hw,-hh,-hw,-hh+bl);
+    s.lineTo(-hw, hh-tl); if(tl) s.quadraticCurveTo(-hw,hh,-hw+tl,hh);
+    return s;
+  }
+
   build(game) {
     if (this.root) { this.scene.remove(this.root); disposeGroupMats(this.root); }
     this.root=new THREE.Group();
     this.boxes.clear(); this.wallGroups.clear(); this.cactusGroups.clear(); this.bushes.length=0; this.water.length=0;
     const theme = tileMap.theme;
+    // Единый полупрозрачный материал воды: один материал + depthWrite:false →
+    // ровная одинаковая прозрачность без тёмных швов между тайлами-озёрцами.
+    this.waterMat = new THREE.MeshLambertMaterial({color:new THREE.Color(theme.water),
+      transparent:true, opacity:0.8, depthWrite:false, side:THREE.DoubleSide});
 
     // Земля: текстура из 2D-декора тайлов (травинки, цветы, камешки)
     const ground=new THREE.Mesh(
@@ -3094,9 +3113,13 @@ class MapRenderer3D {
           this.root.add(grp);
           this.cactusGroups.set(ty*MAP_COLS+tx,{group:grp,tx,ty});
         } else if (t===T_WATER) {
-          const geom=new THREE.PlaneGeometry(TILE,TILE,4,4).rotateX(-Math.PI/2);
-          const mesh=new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
-            color:new THREE.Color(theme.water), transparent:true, opacity:0.85}));
+          // Озерцо: углы скругляются только на рёбрах, открытых к суше, поэтому
+          // соседние водные тайлы сливаются в гладкий силуэт озера.
+          const wN=tileMap.tileAt(tx,ty-1)===T_WATER, wS=tileMap.tileAt(tx,ty+1)===T_WATER;
+          const wW=tileMap.tileAt(tx-1,ty)===T_WATER, wE=tileMap.tileAt(tx+1,ty)===T_WATER;
+          const R=16, radii=[(!wN&&!wW)?R:0,(!wN&&!wE)?R:0,(!wS&&!wE)?R:0,(!wS&&!wW)?R:0];
+          const geom=new THREE.ShapeGeometry(this.roundedRectShape(TILE/2,TILE/2,radii)).rotateX(-Math.PI/2);
+          const mesh=new THREE.Mesh(geom, this.waterMat);
           mesh.position.set(x,3,z);
           this.water.push({mesh,geom,wx:x,wz:z});
           this.root.add(mesh);
@@ -3175,7 +3198,7 @@ class MapRenderer3D {
 
   makeGroundTexture(theme) {
     const c=document.createElement('canvas');
-    c.width=1200; c.height=920;
+    c.width=ARENA_WIDTH*0.5; c.height=ARENA_HEIGHT*0.5;
     const g=c.getContext('2d');
     g.scale(0.5,0.5);
     g.fillStyle=theme.ground; g.fillRect(0,0,ARENA_WIDTH,ARENA_HEIGHT);
@@ -3230,15 +3253,7 @@ class MapRenderer3D {
     // Кусты слегка колышутся
     for (const b of this.bushes)
       b.group.rotation.z=Math.sin(t*0.04+b.phase)*0.035;
-    // Вода: синусоидальные волны по вершинам
-    for (const w of this.water) {
-      const pos=w.geom.attributes.position;
-      for (let i=0;i<pos.count;i++) {
-        const vx=pos.getX(i)+w.wx, vz=pos.getZ(i)+w.wz;
-        pos.setY(i, Math.sin(t*0.06+vx*0.045+vz*0.06)*2.2);
-      }
-      pos.needsUpdate=true;
-    }
+    // Вода — плоские скруглённые озёрца с ровной прозрачностью (без волн по вершинам).
     // Яд
     const b=game.poison.bounds();
     const P=this.poison, W=ARENA_WIDTH, H=ARENA_HEIGHT, y=4;
